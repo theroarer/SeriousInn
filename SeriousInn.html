@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="format-detection" content="telephone=no">
+  <title>Roleplay Chat</title>
+  <style>
+    :root {
+      --bg: #0e0e10;
+      --bg-secondary: #18181b;
+      --bg-tertiary: #1f1f23;
+      --bg-hover: #26262c;
+      --border: #2a2a30;
+      --text: #e4e4e7;
+      --text-secondary: #a1a1aa;
+      --accent: #7c3aed;
+      --accent-hover: #6d28d9;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --safe-area-top: env(safe-area-inset-top, 0px);
+      --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-area-left: env(safe-area-inset-left, 0px);
+      --safe-area-right: env(safe-area-inset-right, 0px);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      -webkit-text-size-adjust: 100%;
+      touch-action: manipulation;
+    }
+
+    /* ── App Shell ── */
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding-left: var(--safe-area-left);
+      padding-right: var(--safe-area-right);
+    }
+
+    /* ── Top Bar ── */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: calc(12px + var(--safe-area-top)) 16px 12px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      min-height: 52px;
+      flex-shrink: 0;
+    }
+
+    .hamburger-btn {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+
+    .hamburger-btn:active {
+      background: var(--bg-hover);
+    }
+
+    .hamburger-btn svg {
+      width: 24px;
+      height: 24px;
+      color: var(--text);
+    }
+
+    .top-bar-title {
+      flex: 1;
+      font-size: 17px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
+    /* ── Chat Area ── */
+    .chat-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: var(--text-secondary);
+      text-align: center;
+      padding: 24px;
+    }
+
+    .empty-state svg {
+      width: 48px;
+      height: 48px;
+      opacity: 0.4;
+      margin-bottom: 8px;
+    }
+
+    .empty-state h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .empty-state p {
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── Messages ── */
+    .message {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 18px;
+      font-size: 15px;
+      line-height: 1.45;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+
+    .message.user {
+      align-self: flex-end;
+      background: var(--accent);
+      color: #fff;
+      border-bottom-right-radius: 6px;
+    }
+
+    .message.assistant {
+      align-self: flex-start;
+      background: var(--bg-tertiary);
+      color: var(--text);
+      border-bottom-left-radius: 6px;
+    }
+
+    .message.system {
+      align-self: center;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-style: italic;
+      padding: 6px 12px;
+    }
+
+    /* ── Overlay Menu ── */
+    .menu-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    .menu-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .menu-drawer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: min(320px, 85vw);
+      background: var(--bg-secondary);
+      z-index: 101;
+      transform: translateX(-100%);
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      padding-top: calc(12px + var(--safe-area-top));
+      padding-bottom: var(--safe-area-bottom);
+    }
+
+    .menu-drawer.open {
+      transform: translateX(0);
+    }
+
+    .menu-header {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .menu-header h2 {
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .menu-content {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .menu-section {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .menu-section:last-child {
+      border-bottom: none;
+    }
+
+    .menu-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+      padding: 8px 20px 4px;
+    }
+
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 15px;
+      width: 100%;
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .menu-item:active {
+      background: var(--bg-hover);
+    }
+
+    .menu-item svg {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      opacity: 0.7;
+    }
+
+    .menu-item.danger {
+      color: var(--danger);
+    }
+
+    .menu-item.danger svg {
+      color: var(--danger);
+    }
+
+    .menu-item.active {
+      background: var(--bg-tertiary);
+    }
+
+    .menu-item.active .active-check {
+      opacity: 1;
+    }
+
+    .active-check {
+      margin-left: auto;
+      opacity: 0;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    /* ── API Key Field ── */
+    .api-key-section {
+      padding: 8px 16px 16px;
+    }
+
+    .api-key-section label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .api-key-input {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: 'Courier New', monospace;
+      outline: none;
+      transition: border-color 0.15s;
+      -webkit-appearance: none;
+    }
+
+    .api-key-input:focus {
+      border-color: var(--accent);
+    }
+
+    .api-key-input::placeholder {
+      color: var(--text-secondary);
+      opacity: 0.5;
+    }
+
+    .api-key-status {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      min-height: 16px;
+    }
+
+    .api-key-status.saved {
+      color: #22c55e;
+    }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: calc(20px + var(--safe-area-bottom));
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--bg-tertiary);
+      color: var(--text);
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      z-index: 200;
+      opacity: 0;
+      pointer-events: none;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+      white-space: nowrap;
+      max-width: calc(100vw - 40px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── Confirm Dialog ── */
+    .confirm-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 300;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    .confirm-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .confirm-dialog {
+      background: var(--bg-secondary);
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 300px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .confirm-dialog h3 {
+      font-size: 17px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .confirm-dialog p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+      line-height: 1.4;
+    }
+
+    .confirm-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .confirm-actions button {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .confirm-actions .cancel-btn {
+      background: var(--bg-tertiary);
+      color: var(--text);
+    }
+
+    .confirm-actions .cancel-btn:active {
+      background: var(--bg-hover);
+    }
+
+    .confirm-actions .confirm-btn {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .confirm-actions .confirm-btn:active {
+      background: var(--danger-hover);
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Top Bar -->
+    <div class="top-bar">
+      <button class="hamburger-btn" id="menuToggle" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+      <div class="top-bar-title" id="topBarTitle">New Chat</div>
+    </div>
+
+    <!-- Chat Area -->
+    <div class="chat-area" id="chatArea">
+      <div class="empty-state" id="emptyState">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        <h2>Roleplay Chat</h2>
+        <p>Start a new chat or load an existing one<br>from the menu.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Menu Overlay -->
+  <div class="menu-overlay" id="menuOverlay"></div>
+
+  <!-- Menu Drawer -->
+  <div class="menu-drawer" id="menuDrawer">
+    <div class="menu-header">
+      <h2>Chats</h2>
+    </div>
+    <div class="menu-content">
+      <!-- Actions -->
+      <div class="menu-section">
+        <button class="menu-item" id="newChatBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          New Chat
+        </button>
+      </div>
+
+      <!-- Saved Chats -->
+      <div class="menu-section">
+        <div class="menu-section-title">Saved Chats</div>
+        <div id="chatList"></div>
+      </div>
+
+      <!-- Current Chat Actions -->
+      <div class="menu-section" id="currentChatSection">
+        <div class="menu-section-title">Current Chat</div>
+        <button class="menu-item danger" id="deleteBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+          Delete
+        </button>
+        <button class="menu-item" id="duplicateBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          Duplicate
+        </button>
+        <button class="menu-item" id="exportBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Export .json
+        </button>
+      </div>
+
+      <!-- API Key -->
+      <div class="api-key-section">
+        <label for="apiKeyInput">OpenRouter API Key</label>
+        <input type="password" class="api-key-input" id="apiKeyInput" placeholder="sk-or-..." autocomplete="off">
+        <div class="api-key-status" id="apiKeyStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Dialog -->
+  <div class="confirm-overlay" id="confirmOverlay">
+    <div class="confirm-dialog">
+      <h3 id="confirmTitle">Delete Chat?</h3>
+      <p id="confirmMessage">This action cannot be undone.</p>
+      <div class="confirm-actions">
+        <button class="cancel-btn" id="confirmCancel">Cancel</button>
+        <button class="confirm-btn" id="confirmOk">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ── Constants ──
+    const STORAGE_KEY = 'roleplay_chats';
+    const API_KEY_KEY = 'roleplay_api_key';
+    const ACTIVE_KEY = 'roleplay_active_chat_id';
+
+    // ── State ──
+    let chats = [];
+    let activeChatId = null;
+    let menuOpen = false;
+    let confirmCallback = null;
+    let toastTimer = null;
+
+    // ── Utility ──
+    function generateId() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+
+    function createChat() {
+      const chat = {
+        id: generateId(),
+        name: 'New Chat',
+        messages: [],
+        created: new Date().toISOString()
+      };
+      return chat;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // ── Persistence ──
+    function saveChats() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
+      } catch (e) {
+        console.error('Failed to save chats:', e);
+        showToast('Failed to save data');
+      }
+    }
+
+    function loadChats() {
+      try {
+        const data = localStorage.getItem(STORAGE_KEY);
+        chats = data ? JSON.parse(data) : [];
+      } catch (e) {
+        console.error('Failed to load chats:', e);
+        chats = [];
+      }
+
+      const activeId = localStorage.getItem(ACTIVE_KEY);
+      activeChatId = activeId && chats.find(c => c.id === activeId) ? activeId : null;
+    }
+
+    function saveActiveChatId() {
+      localStorage.setItem(ACTIVE_KEY, activeChatId || '');
+    }
+
+    function saveApiKey(key) {
+      localStorage.setItem(API_KEY_KEY, key);
+    }
+
+    function loadApiKey() {
+      return localStorage.getItem(API_KEY_KEY) || '';
+    }
+
+    // ── UI Helpers ──
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    function showConfirm(title, message) {
+      return new Promise(resolve => {
+        const overlay = document.getElementById('confirmOverlay');
+        document.getElementById('confirmTitle').textContent = title;
+        document.getElementById('confirmMessage').textContent = message;
+        document.getElementById('confirmOk').textContent = title.includes('Delete') ? 'Delete' : 'OK';
+        overlay.classList.add('open');
+        confirmCallback = resolve;
+      });
+    }
+
+    function hideConfirm() {
+      document.getElementById('confirmOverlay').classList.remove('open');
+      confirmCallback = null;
+    }
+
+    function toggleMenu() {
+      menuOpen = !menuOpen;
+      document.getElementById('menuDrawer').classList.toggle('open', menuOpen);
+      document.getElementById('menuOverlay').classList.toggle('open', menuOpen);
+    }
+
+    function closeMenu() {
+      menuOpen = false;
+      document.getElementById('menuDrawer').classList.remove('open');
+      document.getElementById('menuOverlay').classList.remove('open');
+    }
+
+    // ── Render ──
+    function renderChatList() {
+      const list = document.getElementById('chatList');
+      list.innerHTML = '';
+
+      if (chats.length === 0) {
+        list.innerHTML = '<div style="padding: 16px 20px; color: var(--text-secondary); font-size: 14px;">No saved chats</div>';
+        return;
+      }
+
+      // Sort by created, newest first
+      const sorted = [...chats].sort((a, b) => new Date(b.created) - new Date(a.created));
+
+      sorted.forEach(chat => {
+        const btn = document.createElement('button');
+        btn.className = 'menu-item' + (chat.id === activeChatId ? ' active' : '');
+        btn.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(chat.name)}</span>
+          ${chat.id === activeChatId ? '<svg class="active-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+        `;
+        btn.addEventListener('click', () => {
+          if (chat.id !== activeChatId) {
+            switchToChat(chat.id);
+          }
+          closeMenu();
+        });
+        list.appendChild(btn);
+      });
+    }
+
+    function renderChatArea() {
+      const chatArea = document.getElementById('chatArea');
+      const emptyState = document.getElementById('emptyState');
+      const titleEl = document.getElementById('topBarTitle');
+
+      if (!activeChatId) {
+        chatArea.innerHTML = '';
+        chatArea.appendChild(emptyState);
+        emptyState.style.display = 'flex';
+        titleEl.textContent = 'New Chat';
+        return;
+      }
+
+      const chat = chats.find(c => c.id === activeChatId);
+      if (!chat) {
+        activeChatId = null;
+        saveActiveChatId();
+        renderChatArea();
+        return;
+      }
+
+      titleEl.textContent = chat.name;
+      emptyState.style.display = 'none';
+
+      // Clear and rebuild messages
+      chatArea.innerHTML = '';
+      if (chat.messages.length === 0) {
+        chatArea.appendChild(emptyState);
+        emptyState.style.display = 'flex';
+      } else {
+        chat.messages.forEach(msg => {
+          const el = document.createElement('div');
+          el.className = `message ${msg.role}`;
+          el.innerHTML = escapeHtml(msg.content);
+          chatArea.appendChild(el);
+        });
+      }
+
+      // Scroll to bottom
+      requestAnimationFrame(() => {
+        chatArea.scrollTop = chatArea.scrollHeight;
+      });
+    }
+
+    function render() {
+      renderChatList();
+      renderChatArea();
+    }
+
+    // ── Chat CRUD ──
+    function createNewChat() {
+      const chat = createChat();
+      chats.push(chat);
+      activeChatId = chat.id;
+      saveActiveChatId();
+      saveChats();
+      render();
+      showToast('New chat created');
+    }
+
+    function switchToChat(id) {
+      const chat = chats.find(c => c.id === id);
+      if (!chat) return;
+      activeChatId = id;
+      saveActiveChatId();
+      render();
+      showToast(`Loaded: ${chat.name}`);
+    }
+
+    async function deleteActiveChat() {
+      if (!activeChatId) return;
+      const chat = chats.find(c => c.id === activeChatId);
+      if (!chat) return;
+
+      const ok = await showConfirm(
+        'Delete Chat?',
+        `"${chat.name}" will be permanently removed.`
+      );
+      if (!ok) return;
+
+      chats = chats.filter(c => c.id !== activeChatId);
+      activeChatId = null;
+      saveActiveChatId();
+      saveChats();
+      render();
+      showToast('Chat deleted');
+    }
+
+    function duplicateActiveChat() {
+      if (!activeChatId) return;
+      const chat = chats.find(c => c.id === activeChatId);
+      if (!chat) return;
+
+      const dup = {
+        ...chat,
+        id: generateId(),
+        name: chat.name + ' (copy)',
+        messages: JSON.parse(JSON.stringify(chat.messages)),
+        created: new Date().toISOString()
+      };
+      chats.push(dup);
+      activeChatId = dup.id;
+      saveActiveChatId();
+      saveChats();
+      render();
+      showToast('Chat duplicated');
+    }
+
+    function exportActiveChat() {
+      if (!activeChatId) return;
+      const chat = chats.find(c => c.id === activeChatId);
+      if (!chat) return;
+
+      const blob = new Blob([JSON.stringify(chat, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${chat.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Exported as .json');
+    }
+
+    // ── Event Listeners ──
+    document.getElementById('menuToggle').addEventListener('click', toggleMenu);
+    document.getElementById('menuOverlay').addEventListener('click', closeMenu);
+    document.getElementById('newChatBtn').addEventListener('click', () => { createNewChat(); closeMenu(); });
+    document.getElementById('deleteBtn').addEventListener('click', () => { deleteActiveChat(); closeMenu(); });
+    document.getElementById('duplicateBtn').addEventListener('click', () => { duplicateActiveChat(); closeMenu(); });
+    document.getElementById('exportBtn').addEventListener('click', () => { exportActiveChat(); closeMenu(); });
+
+    document.getElementById('confirmCancel').addEventListener('click', hideConfirm);
+    document.getElementById('confirmOk').addEventListener('click', () => {
+      if (confirmCallback) confirmCallback(true);
+      hideConfirm();
+    });
+
+    // API Key input
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    const apiKeyStatus = document.getElementById('apiKeyStatus');
+
+    apiKeyInput.value = loadApiKey();
+
+    let apiSaveTimeout = null;
+    apiKeyInput.addEventListener('input', () => {
+      apiKeyStatus.textContent = '';
+      apiKeyStatus.classList.remove('saved');
+      clearTimeout(apiSaveTimeout);
+      apiSaveTimeout = setTimeout(() => {
+        saveApiKey(apiKeyInput.value);
+        apiKeyStatus.textContent = 'Saved';
+        apiKeyStatus.classList.add('saved');
+      }, 500);
+    });
+
+    // Keyboard: Escape to close menus
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        if (document.getElementById('confirmOverlay').classList.contains('open')) {
+          hideConfirm();
+        } else if (menuOpen) {
+          closeMenu();
+        }
+      }
+    });
+
+    // ── Init ──
+    loadChats();
+
+    // If there's no active chat, either start fresh or load the latest
+    if (!activeChatId && chats.length > 0) {
+      activeChatId = chats[0].id;
+      saveActiveChatId();
+    }
+
+    render();
+  </script>
+</body>
+</html>
