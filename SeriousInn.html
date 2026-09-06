@@ -1,887 +1,2016 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="format-detection" content="telephone=no">
-  <title>Roleplay Chat</title>
-  <style>
-    :root {
-      --bg: #0e0e10;
-      --bg-secondary: #18181b;
-      --bg-tertiary: #1f1f23;
-      --bg-hover: #26262c;
-      --border: #2a2a30;
-      --text: #e4e4e7;
-      --text-secondary: #a1a1aa;
-      --accent: #7c3aed;
-      --accent-hover: #6d28d9;
-      --danger: #ef4444;
-      --danger-hover: #dc2626;
-      --safe-area-top: env(safe-area-inset-top, 0px);
-      --safe-area-bottom: env(safe-area-inset-bottom, 0px);
-      --safe-area-left: env(safe-area-inset-left, 0px);
-      --safe-area-right: env(safe-area-inset-right, 0px);
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Roleplay Chat</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2a2a2a;
+            --bg-tertiary: #333333;
+            --text-primary: #ffffff;
+            --text-secondary: #cccccc;
+            --accent: #4a9eff;
+            --danger: #ff4444;
+            --success: #44ff44;
+            --border: #444444;
+            --sidebar-width: 280px;
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --safe-left: env(safe-area-inset-left, 0px);
+            --safe-right: env(safe-area-inset-right, 0px);
+        }
 
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
 
-    html, body {
-      height: 100%;
-      overflow: hidden;
-    }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            touch-action: manipulation;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      -webkit-font-smoothing: antialiased;
-      -webkit-text-size-adjust: 100%;
-      touch-action: manipulation;
-    }
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            position: relative;
+        }
 
-    /* ── App Shell ── */
-    .app {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      padding-left: var(--safe-area-left);
-      padding-right: var(--safe-area-right);
-    }
+        #header {
+            background: var(--bg-secondary);
+            padding: calc(12px + var(--safe-top)) 16px 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+            min-height: calc(56px + var(--safe-top));
+            flex-shrink: 0;
+        }
 
-    /* ── Top Bar ── */
-    .top-bar {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: calc(12px + var(--safe-area-top)) 16px 12px;
-      background: var(--bg-secondary);
-      border-bottom: 1px solid var(--border);
-      min-height: 52px;
-      flex-shrink: 0;
-    }
+        .hamburger {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 28px;
+            cursor: pointer;
+            padding: 8px;
+            min-width: 44px;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+        }
 
-    .hamburger-btn {
-      width: 40px;
-      height: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: none;
-      border: none;
-      cursor: pointer;
-      border-radius: 8px;
-      transition: background 0.15s;
-      flex-shrink: 0;
-    }
+        .hamburger:active {
+            background: var(--bg-tertiary);
+        }
 
-    .hamburger-btn:active {
-      background: var(--bg-hover);
-    }
+        #chatTitle {
+            flex: 1;
+            font-size: 18px;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
 
-    .hamburger-btn svg {
-      width: 24px;
-      height: 24px;
-      color: var(--text);
-    }
+        #sidebar {
+            position: fixed;
+            left: calc(-1 * var(--sidebar-width) - 20px);
+            top: 0;
+            bottom: 0;
+            width: var(--sidebar-width);
+            background: var(--bg-secondary);
+            transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            padding-top: var(--safe-top);
+            box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
 
-    .top-bar-title {
-      flex: 1;
-      font-size: 17px;
-      font-weight: 600;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      min-width: 0;
-    }
+        #sidebar.open {
+            left: 0;
+        }
 
-    /* ── Chat Area ── */
-    .chat-area {
-      flex: 1;
-      overflow-y: auto;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
+        #sidebarOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+            display: none;
+        }
 
-    .empty-state {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      color: var(--text-secondary);
-      text-align: center;
-      padding: 24px;
-    }
+        #sidebarOverlay.active {
+            display: block;
+        }
 
-    .empty-state svg {
-      width: 48px;
-      height: 48px;
-      opacity: 0.4;
-      margin-bottom: 8px;
-    }
+        .sidebar-header {
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--bg-secondary);
+            z-index: 2;
+        }
 
-    .empty-state h2 {
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--text);
-    }
+        .sidebar-header h2 {
+            font-size: 20px;
+            font-weight: 600;
+        }
 
-    .empty-state p {
-      font-size: 14px;
-      line-height: 1.5;
-    }
+        .close-sidebar {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 8px;
+            min-width: 44px;
+            min-height: 44px;
+            pointer-events: auto;
+        }
 
-    /* ── Messages ── */
-    .message {
-      max-width: 85%;
-      padding: 10px 14px;
-      border-radius: 18px;
-      font-size: 15px;
-      line-height: 1.45;
-      word-wrap: break-word;
-      white-space: pre-wrap;
-    }
+        .new-chat-btn {
+            margin: 16px;
+            padding: 12px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            min-height: 44px;
+            flex-shrink: 0;
+        }
 
-    .message.user {
-      align-self: flex-end;
-      background: var(--accent);
-      color: #fff;
-      border-bottom-right-radius: 6px;
-    }
+        .new-chat-btn:active {
+            opacity: 0.8;
+        }
 
-    .message.assistant {
-      align-self: flex-start;
-      background: var(--bg-tertiary);
-      color: var(--text);
-      border-bottom-left-radius: 6px;
-    }
+        #chatList {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+            -webkit-overflow-scrolling: touch;
+            min-height: 100px;
+            max-height: 25vh;
+        }
 
-    .message.system {
-      align-self: center;
-      background: transparent;
-      color: var(--text-secondary);
-      font-size: 13px;
-      font-style: italic;
-      padding: 6px 12px;
-    }
+        .chat-list-item {
+            padding: 12px;
+            margin: 4px 0;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+        }
 
-    /* ── Overlay Menu ── */
-    .menu-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.5);
-      z-index: 100;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.2s;
-    }
+        .chat-list-item:active {
+            background: var(--border);
+        }
 
-    .menu-overlay.open {
-      opacity: 1;
-      pointer-events: auto;
-    }
+        .chat-list-item.active {
+            background: var(--accent);
+        }
 
-    .menu-drawer {
-      position: fixed;
-      top: 0;
-      left: 0;
-      bottom: 0;
-      width: min(320px, 85vw);
-      background: var(--bg-secondary);
-      z-index: 101;
-      transform: translateX(-100%);
-      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-      display: flex;
-      flex-direction: column;
-      padding-top: calc(12px + var(--safe-area-top));
-      padding-bottom: var(--safe-area-bottom);
-    }
+        .sidebar-actions {
+            padding: 16px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex-shrink: 0;
+        }
 
-    .menu-drawer.open {
-      transform: translateX(0);
-    }
+        .sidebar-action-btn {
+            padding: 10px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            min-height: 44px;
+            text-align: left;
+            padding-left: 16px;
+        }
 
-    .menu-header {
-      padding: 16px 20px 12px;
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
+        .sidebar-action-btn:active {
+            background: var(--border);
+        }
 
-    .menu-header h2 {
-      font-size: 20px;
-      font-weight: 700;
-    }
+        .sidebar-action-btn.danger {
+            color: var(--danger);
+        }
 
-    .menu-content {
-      flex: 1;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
+        .api-key-section {
+            padding: 16px;
+            border-top: 1px solid var(--border);
+            flex-shrink: 0;
+        }
 
-    .menu-section {
-      padding: 8px 0;
-      border-bottom: 1px solid var(--border);
-    }
+        .api-key-label {
+            font-size: 14px;
+            margin-bottom: 8px;
+            display: block;
+            color: var(--text-secondary);
+        }
 
-    .menu-section:last-child {
-      border-bottom: none;
-    }
+        .api-key-input {
+            width: 100%;
+            padding: 10px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 14px;
+            min-height: 44px;
+        }
 
-    .menu-section-title {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-secondary);
-      padding: 8px 20px 4px;
-    }
+        .test-connection-btn {
+            width: 100%;
+            margin-top: 8px;
+            padding: 10px;
+            background: var(--bg-tertiary);
+            color: var(--accent);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            min-height: 44px;
+        }
 
-    .menu-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 20px;
-      background: none;
-      border: none;
-      color: var(--text);
-      font-size: 15px;
-      width: 100%;
-      text-align: left;
-      cursor: pointer;
-      transition: background 0.1s;
-      -webkit-tap-highlight-color: transparent;
-    }
+        .model-select-container {
+            margin-top: 8px;
+            position: relative;
+        }
 
-    .menu-item:active {
-      background: var(--bg-hover);
-    }
+        .save-indicator {
+            font-size: 12px;
+            color: var(--success);
+            margin-top: 4px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
 
-    .menu-item svg {
-      width: 20px;
-      height: 20px;
-      flex-shrink: 0;
-      opacity: 0.7;
-    }
+        .save-indicator.visible {
+            opacity: 1;
+        }
 
-    .menu-item.danger {
-      color: var(--danger);
-    }
+        .model-select-wrapper {
+            position: relative;
+            width: 100%;
+        }
 
-    .menu-item.danger svg {
-      color: var(--danger);
-    }
+        .model-select {
+            width: 100%;
+            padding: 10px 32px 10px 10px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 14px;
+            min-height: 44px;
+            cursor: pointer;
+        }
 
-    .menu-item.active {
-      background: var(--bg-tertiary);
-    }
+        .model-select-wrapper::after {
+            content: '';
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 6px solid var(--text-secondary);
+            pointer-events: none;
+        }
 
-    .menu-item.active .active-check {
-      opacity: 1;
-    }
+        .model-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            width: 100%;
+            max-height: 300px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            flex-direction: column;
+            overflow: hidden;
+        }
 
-    .active-check {
-      margin-left: auto;
-      opacity: 0;
-      color: var(--accent);
-      flex-shrink: 0;
-    }
+        .model-dropdown.active {
+            display: flex;
+        }
 
-    /* ── API Key Field ── */
-    .api-key-section {
-      padding: 8px 16px 16px;
-    }
+        .model-dropdown-header {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
 
-    .api-key-section label {
-      display: block;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-secondary);
-      margin-bottom: 6px;
-    }
+        .model-dropdown-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+        }
 
-    .api-key-input {
-      width: 100%;
-      padding: 10px 12px;
-      background: var(--bg-tertiary);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      font-size: 14px;
-      font-family: 'Courier New', monospace;
-      outline: none;
-      transition: border-color 0.15s;
-      -webkit-appearance: none;
-    }
+        .model-dropdown-close {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 20px;
+            cursor: pointer;
+            padding: 8px;
+            min-width: 44px;
+            min-height: 44px;
+        }
 
-    .api-key-input:focus {
-      border-color: var(--accent);
-    }
+        .model-search-input {
+            width: calc(100% - 24px);
+            margin: 12px;
+            padding: 10px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 14px;
+            min-height: 44px;
+        }
 
-    .api-key-input::placeholder {
-      color: var(--text-secondary);
-      opacity: 0.5;
-    }
+        .model-options-container {
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 0 12px 12px 12px;
+        }
 
-    .api-key-status {
-      font-size: 11px;
-      color: var(--text-secondary);
-      margin-top: 4px;
-      min-height: 16px;
-    }
+        .model-option {
+            padding: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            border-radius: 6px;
+        }
 
-    .api-key-status.saved {
-      color: #22c55e;
-    }
+        .model-option:active {
+            background: var(--bg-tertiary);
+        }
 
-    /* ── Toast ── */
-    .toast {
-      position: fixed;
-      bottom: calc(20px + var(--safe-area-bottom));
-      left: 50%;
-      transform: translateX(-50%) translateY(80px);
-      background: var(--bg-tertiary);
-      color: var(--text);
-      padding: 12px 20px;
-      border-radius: 12px;
-      font-size: 14px;
-      font-weight: 500;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-      z-index: 200;
-      opacity: 0;
-      pointer-events: none;
-      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
-      white-space: nowrap;
-      max-width: calc(100vw - 40px);
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+        .model-option.selected {
+            background: var(--accent);
+        }
 
-    .toast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
+        #chatArea {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-height: 0;
+        }
 
-    /* ── Confirm Dialog ── */
-    .confirm-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.6);
-      z-index: 300;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.2s;
-    }
+        #messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 8px;
+        }
 
-    .confirm-overlay.open {
-      opacity: 1;
-      pointer-events: auto;
-    }
+        .message {
+            margin-bottom: 16px;
+            max-width: 85%;
+            animation: fadeIn 0.3s;
+        }
 
-    .confirm-dialog {
-      background: var(--bg-secondary);
-      border-radius: 16px;
-      padding: 24px;
-      max-width: 300px;
-      width: 100%;
-      text-align: center;
-    }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
 
-    .confirm-dialog h3 {
-      font-size: 17px;
-      font-weight: 600;
-      margin-bottom: 8px;
-    }
+        .message.user {
+            margin-left: auto;
+            background: var(--accent);
+            padding: 12px 16px;
+            border-radius: 18px 18px 4px 18px;
+        }
 
-    .confirm-dialog p {
-      font-size: 14px;
-      color: var(--text-secondary);
-      margin-bottom: 20px;
-      line-height: 1.4;
-    }
+        .message.assistant {
+            margin-right: auto;
+            background: var(--bg-secondary);
+            padding: 12px 16px;
+            border-radius: 18px 18px 18px 4px;
+            border: 1px solid var(--border);
+        }
 
-    .confirm-actions {
-      display: flex;
-      gap: 8px;
-    }
+        .message-content {
+            font-size: 16px;
+            line-height: 1.5;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
 
-    .confirm-actions button {
-      flex: 1;
-      padding: 12px;
-      border: none;
-      border-radius: 10px;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
+        .message-role {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
 
-    .confirm-actions .cancel-btn {
-      background: var(--bg-tertiary);
-      color: var(--text);
-    }
+        .typing-indicator {
+            display: none;
+            margin-right: auto;
+            background: var(--bg-secondary);
+            padding: 12px 16px;
+            border-radius: 18px;
+            border: 1px solid var(--border);
+            margin-bottom: 16px;
+        }
 
-    .confirm-actions .cancel-btn:active {
-      background: var(--bg-hover);
-    }
+        .typing-indicator.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
 
-    .confirm-actions .confirm-btn {
-      background: var(--danger);
-      color: #fff;
-    }
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+        }
 
-    .confirm-actions .confirm-btn:active {
-      background: var(--danger-hover);
-    }
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--text-secondary);
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
 
-    /* ── Scrollbar ── */
-    ::-webkit-scrollbar {
-      width: 4px;
-    }
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
 
-    ::-webkit-scrollbar-track {
-      background: transparent;
-    }
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
 
-    ::-webkit-scrollbar-thumb {
-      background: var(--border);
-      border-radius: 2px;
-    }
-  </style>
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-10px); }
+        }
+
+        #inputArea {
+            padding: 12px 16px calc(12px + var(--safe-bottom));
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+            flex-shrink: 0;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            color: var(--text-primary);
+            font-size: 16px;
+            min-height: 44px;
+            max-height: 120px;
+            resize: none;
+            outline: none;
+        }
+
+        #messageInput:focus {
+            border-color: var(--accent);
+        }
+
+        #sendButton {
+            padding: 12px 20px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            min-height: 44px;
+            min-width: 60px;
+        }
+
+        #sendButton:active {
+            opacity: 0.8;
+        }
+
+        #sendButton:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #debugPanel {
+            display: none;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            height: 40vh;
+            max-height: 40vh;
+            overflow: hidden;
+            flex-shrink: 0;
+            flex-direction: column;
+        }
+
+        #debugPanel.active {
+            display: flex;
+        }
+
+        .debug-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .debug-header span {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .debug-copy-btn {
+            padding: 8px 12px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            min-height: 32px;
+        }
+
+        #debugContent {
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+
+        .debug-line {
+            margin-bottom: 4px;
+            color: var(--text-secondary);
+            word-wrap: break-word;
+        }
+
+        .debug-line.error {
+            color: var(--danger);
+        }
+
+        .debug-line.success {
+            color: var(--success);
+        }
+
+        .debug-line.info {
+            color: var(--accent);
+        }
+
+        .debug-line.warning {
+            color: #ffaa00;
+        }
+
+        /* Lore Management View */
+        #loreManagementView {
+            display: none;
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 16px;
+        }
+
+        #loreManagementView.active {
+            display: block;
+        }
+
+        .lorebook-section {
+            margin-bottom: 24px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .lorebook-section-header {
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .lorebook-section-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .lorebook-entry {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .lorebook-entry:last-child {
+            border-bottom: none;
+        }
+
+        .lorebook-entry-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .lorebook-entry-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .lorebook-entry-keys {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .lorebook-entry-content {
+            font-size: 14px;
+            line-height: 1.5;
+            color: var(--text-primary);
+            white-space: pre-wrap;
+        }
+
+        .edit-btn {
+            padding: 6px 12px;
+            background: var(--bg-primary);
+            color: var(--accent);
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            min-height: 32px;
+        }
+
+        .edit-form input,
+        .edit-form textarea {
+            width: 100%;
+            padding: 10px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .edit-form textarea {
+            min-height: 200px;
+            resize: vertical;
+        }
+
+        .edit-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .save-btn, .cancel-btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            min-height: 40px;
+            border: none;
+        }
+
+        .save-btn {
+            background: var(--success);
+            color: var(--bg-primary);
+            font-weight: 600;
+        }
+
+        .cancel-btn {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .lorebook-toggle {
+            position: relative;
+            width: 48px;
+            height: 28px;
+            background: var(--border);
+            border-radius: 14px;
+            cursor: pointer;
+            transition: background 0.3s;
+            flex-shrink: 0;
+        }
+
+        .lorebook-toggle.active {
+            background: var(--accent);
+        }
+
+        .lorebook-toggle-knob {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 22px;
+            height: 22px;
+            background: white;
+            border-radius: 50%;
+            transition: left 0.3s;
+        }
+
+        .lorebook-toggle.active .lorebook-toggle-knob {
+            left: 23px;
+        }
+
+        @media (min-width: 768px) {
+            #sidebar {
+                left: 0;
+            }
+            
+            #sidebarOverlay {
+                display: none !important;
+            }
+            
+            .hamburger {
+                display: none;
+            }
+            
+            #app {
+                margin-left: var(--sidebar-width);
+            }
+        }
+    </style>
 </head>
 <body>
-  <div class="app">
-    <!-- Top Bar -->
-    <div class="top-bar">
-      <button class="hamburger-btn" id="menuToggle" aria-label="Open menu">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <line x1="3" y1="6" x2="21" y2="6"/>
-          <line x1="3" y1="12" x2="21" y2="12"/>
-          <line x1="3" y1="18" x2="21" y2="18"/>
-        </svg>
-      </button>
-      <div class="top-bar-title" id="topBarTitle">New Chat</div>
+    <div id="app">
+        <div id="header">
+            <button class="hamburger" id="hamburgerBtn">☰</button>
+            <div id="chatTitle">New Chat</div>
+        </div>
+
+        <div id="chatArea">
+            <div id="messages"></div>
+            <div class="typing-indicator" id="typingIndicator">
+                <div class="typing-dots">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            </div>
+            <div id="inputArea">
+                <textarea id="messageInput" rows="1" placeholder="Type your message..."></textarea>
+                <button id="sendButton">Send</button>
+            </div>
+        </div>
+
+        <div id="loreManagementView">
+            <!-- Dynamic content rendered here -->
+        </div>
+
+        <div id="debugPanel">
+            <div class="debug-header">
+                <span>Debug Console</span>
+                <button class="debug-copy-btn" id="copyDebugBtn">📋 Copy All</button>
+            </div>
+            <div id="debugContent"></div>
+        </div>
     </div>
 
-    <!-- Chat Area -->
-    <div class="chat-area" id="chatArea">
-      <div class="empty-state" id="emptyState">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        </svg>
-        <h2>Roleplay Chat</h2>
-        <p>Start a new chat or load an existing one<br>from the menu.</p>
-      </div>
-    </div>
-  </div>
+    <div id="sidebarOverlay"></div>
 
-  <!-- Menu Overlay -->
-  <div class="menu-overlay" id="menuOverlay"></div>
-
-  <!-- Menu Drawer -->
-  <div class="menu-drawer" id="menuDrawer">
-    <div class="menu-header">
-      <h2>Chats</h2>
-    </div>
-    <div class="menu-content">
-      <!-- Actions -->
-      <div class="menu-section">
-        <button class="menu-item" id="newChatBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          New Chat
-        </button>
-      </div>
-
-      <!-- Saved Chats -->
-      <div class="menu-section">
-        <div class="menu-section-title">Saved Chats</div>
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <h2>Chats</h2>
+            <button class="close-sidebar" id="closeSidebarBtn">✕</button>
+        </div>
+        
+        <button class="new-chat-btn" id="newChatBtn">+ New Chat</button>
+        
         <div id="chatList"></div>
-      </div>
-
-      <!-- Current Chat Actions -->
-      <div class="menu-section" id="currentChatSection">
-        <div class="menu-section-title">Current Chat</div>
-        <button class="menu-item danger" id="deleteBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <polyline points="3 6 5 6 21 6"/>
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-          </svg>
-          Delete
-        </button>
-        <button class="menu-item" id="duplicateBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-          </svg>
-          Duplicate
-        </button>
-        <button class="menu-item" id="exportBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          Export .json
-        </button>
-      </div>
-
-      <!-- API Key -->
-      <div class="api-key-section">
-        <label for="apiKeyInput">OpenRouter API Key</label>
-        <input type="password" class="api-key-input" id="apiKeyInput" placeholder="sk-or-..." autocomplete="off">
-        <div class="api-key-status" id="apiKeyStatus"></div>
-      </div>
+        
+        <div class="sidebar-actions">
+            <button class="sidebar-action-btn" id="viewToggleBtn">📚 Lore Management</button>
+            <button class="sidebar-action-btn" id="duplicateChatBtn">📋 Duplicate Current Chat</button>
+            <button class="sidebar-action-btn danger" id="deleteChatBtn">🗑️ Delete Current Chat</button>
+            <button class="sidebar-action-btn" id="exportChatBtn">💾 Export Current Chat</button>
+            <button class="sidebar-action-btn" id="debugToggleBtn">🐛 Debug Toggle</button>
+        </div>
+        
+        <div class="api-key-section">
+            <label class="api-key-label" for="apiKeyInput">OpenRouter API Key:</label>
+            <input type="password" class="api-key-input" id="apiKeyInput" placeholder="sk-or-...">
+            <div class="save-indicator" id="saveIndicator"></div>
+            <button class="test-connection-btn" id="testConnectionBtn">🔌 Test Connection</button>
+            
+            <div class="model-select-container">
+                <label class="api-key-label">Model:</label>
+                <div class="model-select-wrapper" id="modelSelectWrapper">
+                    <div class="model-select" id="modelSelect" role="button" tabindex="0">Select a model...</div>
+                    <div class="model-dropdown" id="modelDropdown">
+                        <div class="model-dropdown-header">
+                            <h3>Models</h3>
+                            <button class="model-dropdown-close" id="modelDropdownClose" title="Close">✕</button>
+                        </div>
+                        <input type="text" class="model-search-input" id="modelSearch" placeholder="Search models...">
+                        <div class="model-options-container" id="modelOptions"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
 
-  <!-- Confirm Dialog -->
-  <div class="confirm-overlay" id="confirmOverlay">
-    <div class="confirm-dialog">
-      <h3 id="confirmTitle">Delete Chat?</h3>
-      <p id="confirmMessage">This action cannot be undone.</p>
-      <div class="confirm-actions">
-        <button class="cancel-btn" id="confirmCancel">Cancel</button>
-        <button class="confirm-btn" id="confirmOk">Delete</button>
-      </div>
-    </div>
-  </div>
+    <script>
+	class StorageManager {
+		static isLocalStorageAvailable() {
+			try {
+				const test = '__storage_test__';
+				localStorage.setItem(test, test);
+				localStorage.removeItem(test);
+				console.log('✓ localStorage is available');
+				return true;
+			} catch (e) {
+				console.error('✗ localStorage is not available:', e);
+				return false;
+			}
+		}
 
-  <!-- Toast -->
-  <div class="toast" id="toast"></div>
+		static setItem(key, value) {
+			console.log(`📝 StorageManager.setItem for key: ${key}`);
+			
+			// Try localStorage first
+			try {
+				const jsonData = JSON.stringify(value);
+				localStorage.setItem(key, jsonData);
+				console.log(`✓ Saved to localStorage: ${key}`);
+				
+				// Verify
+				const saved = localStorage.getItem(key);
+				if (saved) {
+					console.log(`✓ Verified localStorage save for ${key}`);
+					return true;
+				}
+			} catch (e) {
+				console.error(`✗ localStorage.setItem failed for ${key}:`, e);
+			}
+			
+			// Fallback to cookies
+			try {
+				const jsonData = JSON.stringify(value);
+				document.cookie = `${key}=${encodeURIComponent(jsonData)}; max-age=31536000; path=/; SameSite=Lax`;
+				console.log(`✓ Fallback: saved to cookie: ${key}`);
+				return true;
+			} catch (cookieError) {
+				console.error(`✗ Cookie fallback failed for ${key}:`, cookieError);
+			}
+			
+			// Fallback to in-memory storage
+			this.memoryStorage = this.memoryStorage || {};
+			this.memoryStorage[key] = value;
+			console.log(`✓ Fallback: saved to memory: ${key}`);
+			return true;
+		}
 
-  <script>
-    // ── Constants ──
-    const STORAGE_KEY = 'roleplay_chats';
-    const API_KEY_KEY = 'roleplay_api_key';
-    const ACTIVE_KEY = 'roleplay_active_chat_id';
+		static getItem(key) {
+			console.log(`🔍 StorageManager.getItem for key: ${key}`);
+			
+			// Try localStorage first
+			try {
+				const data = localStorage.getItem(key);
+				if (data) {
+					console.log(`✓ Retrieved from localStorage: ${key}`);
+					return JSON.parse(data);
+				}
+			} catch (e) {
+				console.error(`✗ localStorage.getItem failed for ${key}:`, e);
+			}
+			
+			// Try cookies
+			try {
+				const cookies = document.cookie.split(';');
+				for (let cookie of cookies) {
+					const [cookieKey, cookieValue] = cookie.trim().split('=');
+					if (cookieKey === key && cookieValue) {
+						console.log(`✓ Retrieved from cookie: ${key}`);
+						return JSON.parse(decodeURIComponent(cookieValue));
+					}
+				}
+			} catch (e) {
+				console.error(`✗ Cookie getItem failed for ${key}:`, e);
+			}
+			
+			// Try in-memory storage
+			if (this.memoryStorage && this.memoryStorage[key]) {
+				console.log(`✓ Retrieved from memory: ${key}`);
+				return this.memoryStorage[key];
+			}
+			
+			console.log(`✗ No data found for: ${key}`);
+			return null;
+		}
 
-    // ── State ──
-    let chats = [];
-    let activeChatId = null;
-    let menuOpen = false;
-    let confirmCallback = null;
-    let toastTimer = null;
+		static removeItem(key) {
+			console.log(`🗑️ StorageManager.removeItem for key: ${key}`);
+			
+			try {
+				localStorage.removeItem(key);
+				console.log(`✓ Removed from localStorage: ${key}`);
+			} catch (e) {
+				console.error(`✗ localStorage.removeItem failed for ${key}:`, e);
+			}
+			
+			try {
+				document.cookie = `${key}=; max-age=0; path=/;`;
+				console.log(`✓ Removed from cookie: ${key}`);
+			} catch (e) {
+				console.error(`✗ Cookie removeItem failed for ${key}:`, e);
+			}
+			
+			if (this.memoryStorage && this.memoryStorage[key]) {
+				delete this.memoryStorage[key];
+				console.log(`✓ Removed from memory: ${key}`);
+			}
+		}
+	}
 
-    // ── Utility ──
-    function generateId() {
-      return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    }
-
-    function createChat() {
-      const chat = {
-        id: generateId(),
-        name: 'New Chat',
-        messages: [],
-        created: new Date().toISOString()
-      };
-      return chat;
-    }
-
-    function escapeHtml(str) {
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
-    }
-
-    // ── Persistence ──
-    function saveChats() {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
-      } catch (e) {
-        console.error('Failed to save chats:', e);
-        showToast('Failed to save data');
-      }
-    }
-
-    function loadChats() {
-      try {
-        const data = localStorage.getItem(STORAGE_KEY);
-        chats = data ? JSON.parse(data) : [];
-      } catch (e) {
-        console.error('Failed to load chats:', e);
-        chats = [];
-      }
-
-      const activeId = localStorage.getItem(ACTIVE_KEY);
-      activeChatId = activeId && chats.find(c => c.id === activeId) ? activeId : null;
-    }
-
-    function saveActiveChatId() {
-      localStorage.setItem(ACTIVE_KEY, activeChatId || '');
-    }
-
-    function saveApiKey(key) {
-      localStorage.setItem(API_KEY_KEY, key);
-    }
-
-    function loadApiKey() {
-      return localStorage.getItem(API_KEY_KEY) || '';
-    }
-
-    // ── UI Helpers ──
-    function showToast(msg) {
-      const toast = document.getElementById('toast');
-      toast.textContent = msg;
-      toast.classList.add('show');
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
-    }
-
-    function showConfirm(title, message) {
-      return new Promise(resolve => {
-        const overlay = document.getElementById('confirmOverlay');
-        document.getElementById('confirmTitle').textContent = title;
-        document.getElementById('confirmMessage').textContent = message;
-        document.getElementById('confirmOk').textContent = title.includes('Delete') ? 'Delete' : 'OK';
-        overlay.classList.add('open');
-        confirmCallback = resolve;
-      });
-    }
-
-    function hideConfirm() {
-      document.getElementById('confirmOverlay').classList.remove('open');
-      confirmCallback = null;
-    }
-
-    function toggleMenu() {
-      menuOpen = !menuOpen;
-      document.getElementById('menuDrawer').classList.toggle('open', menuOpen);
-      document.getElementById('menuOverlay').classList.toggle('open', menuOpen);
-    }
-
-    function closeMenu() {
-      menuOpen = false;
-      document.getElementById('menuDrawer').classList.remove('open');
-      document.getElementById('menuOverlay').classList.remove('open');
-    }
-
-    // ── Render ──
-    function renderChatList() {
-      const list = document.getElementById('chatList');
-      list.innerHTML = '';
-
-      if (chats.length === 0) {
-        list.innerHTML = '<div style="padding: 16px 20px; color: var(--text-secondary); font-size: 14px;">No saved chats</div>';
-        return;
-      }
-
-      // Sort by created, newest first
-      const sorted = [...chats].sort((a, b) => new Date(b.created) - new Date(a.created));
-
-      sorted.forEach(chat => {
-        const btn = document.createElement('button');
-        btn.className = 'menu-item' + (chat.id === activeChatId ? ' active' : '');
-        btn.innerHTML = `
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
-          <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(chat.name)}</span>
-          ${chat.id === activeChatId ? '<svg class="active-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
-        `;
-        btn.addEventListener('click', () => {
-          if (chat.id !== activeChatId) {
-            switchToChat(chat.id);
-          }
-          closeMenu();
-        });
-        list.appendChild(btn);
-      });
-    }
-
-    function renderChatArea() {
-      const chatArea = document.getElementById('chatArea');
-      const emptyState = document.getElementById('emptyState');
-      const titleEl = document.getElementById('topBarTitle');
-
-      if (!activeChatId) {
-        chatArea.innerHTML = '';
-        chatArea.appendChild(emptyState);
-        emptyState.style.display = 'flex';
-        titleEl.textContent = 'New Chat';
-        return;
-      }
-
-      const chat = chats.find(c => c.id === activeChatId);
-      if (!chat) {
-        activeChatId = null;
-        saveActiveChatId();
-        renderChatArea();
-        return;
-      }
-
-      titleEl.textContent = chat.name;
-      emptyState.style.display = 'none';
-
-      // Clear and rebuild messages
-      chatArea.innerHTML = '';
-      if (chat.messages.length === 0) {
-        chatArea.appendChild(emptyState);
-        emptyState.style.display = 'flex';
-      } else {
-        chat.messages.forEach(msg => {
-          const el = document.createElement('div');
-          el.className = `message ${msg.role}`;
-          el.innerHTML = escapeHtml(msg.content);
-          chatArea.appendChild(el);
-        });
-      }
-
-      // Scroll to bottom
-      requestAnimationFrame(() => {
-        chatArea.scrollTop = chatArea.scrollHeight;
-      });
-    }
-
-    function render() {
-      renderChatList();
-      renderChatArea();
-    }
-
-    // ── Chat CRUD ──
-    function createNewChat() {
-      const chat = createChat();
-      chats.push(chat);
-      activeChatId = chat.id;
-      saveActiveChatId();
-      saveChats();
-      render();
-      showToast('New chat created');
-    }
-
-    function switchToChat(id) {
-      const chat = chats.find(c => c.id === id);
-      if (!chat) return;
-      activeChatId = id;
-      saveActiveChatId();
-      render();
-      showToast(`Loaded: ${chat.name}`);
-    }
-
-    async function deleteActiveChat() {
-      if (!activeChatId) return;
-      const chat = chats.find(c => c.id === activeChatId);
-      if (!chat) return;
-
-      const ok = await showConfirm(
-        'Delete Chat?',
-        `"${chat.name}" will be permanently removed.`
-      );
-      if (!ok) return;
-
-      chats = chats.filter(c => c.id !== activeChatId);
-      activeChatId = null;
-      saveActiveChatId();
-      saveChats();
-      render();
-      showToast('Chat deleted');
-    }
-
-    function duplicateActiveChat() {
-      if (!activeChatId) return;
-      const chat = chats.find(c => c.id === activeChatId);
-      if (!chat) return;
-
-      const dup = {
-        ...chat,
-        id: generateId(),
-        name: chat.name + ' (copy)',
-        messages: JSON.parse(JSON.stringify(chat.messages)),
-        created: new Date().toISOString()
-      };
-      chats.push(dup);
-      activeChatId = dup.id;
-      saveActiveChatId();
-      saveChats();
-      render();
-      showToast('Chat duplicated');
-    }
-
-    function exportActiveChat() {
-      if (!activeChatId) return;
-      const chat = chats.find(c => c.id === activeChatId);
-      if (!chat) return;
-
-      const blob = new Blob([JSON.stringify(chat, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${chat.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showToast('Exported as .json');
-    }
-
-    // ── Event Listeners ──
-    document.getElementById('menuToggle').addEventListener('click', toggleMenu);
-    document.getElementById('menuOverlay').addEventListener('click', closeMenu);
-    document.getElementById('newChatBtn').addEventListener('click', () => { createNewChat(); closeMenu(); });
-    document.getElementById('deleteBtn').addEventListener('click', () => { deleteActiveChat(); closeMenu(); });
-    document.getElementById('duplicateBtn').addEventListener('click', () => { duplicateActiveChat(); closeMenu(); });
-    document.getElementById('exportBtn').addEventListener('click', () => { exportActiveChat(); closeMenu(); });
-
-    document.getElementById('confirmCancel').addEventListener('click', hideConfirm);
-    document.getElementById('confirmOk').addEventListener('click', () => {
-      if (confirmCallback) confirmCallback(true);
-      hideConfirm();
-    });
-
-    // API Key input
-    const apiKeyInput = document.getElementById('apiKeyInput');
-    const apiKeyStatus = document.getElementById('apiKeyStatus');
-
-    apiKeyInput.value = loadApiKey();
-
-    let apiSaveTimeout = null;
-    apiKeyInput.addEventListener('input', () => {
-      apiKeyStatus.textContent = '';
-      apiKeyStatus.classList.remove('saved');
-      clearTimeout(apiSaveTimeout);
-      apiSaveTimeout = setTimeout(() => {
-        saveApiKey(apiKeyInput.value);
-        apiKeyStatus.textContent = 'Saved';
-        apiKeyStatus.classList.add('saved');
-      }, 500);
-    });
-
-    // Keyboard: Escape to close menus
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        if (document.getElementById('confirmOverlay').classList.contains('open')) {
-          hideConfirm();
-        } else if (menuOpen) {
-          closeMenu();
+    class LorebookStorage {
+		static async init() {
+			try {
+				const request = indexedDB.open('test', 1);
+				await new Promise((resolve, reject) => {
+					request.onsuccess = () => {
+						request.result.close();
+						resolve();
+					};
+					request.onerror = () => reject(request.error);
+				});
+				this.useIndexedDB = true;
+				console.log('✓ IndexedDB available for lorebooks');
+			} catch (e) {
+				this.useIndexedDB = false;
+				console.warn('IndexedDB not available, using localStorage/cookie fallback');
+			}
+		}
+        
+        static async saveLorebook(lorebook) {
+            if (this.useIndexedDB) {
+                return this.saveToIndexedDB(lorebook);
+            } else {
+                return this.saveToLocalStorage(lorebook);
+            }
         }
-      }
-    });
-
-    // ── Init ──
-    loadChats();
-
-    // If there's no active chat, either start fresh or load the latest
-    if (!activeChatId && chats.length > 0) {
-      activeChatId = chats[0].id;
-      saveActiveChatId();
+        
+        static async getAllLorebooks() {
+            if (this.useIndexedDB) {
+                return this.getFromIndexedDB();
+            } else {
+                return this.getFromLocalStorage();
+            }
+        }
+        
+        static async deleteLorebook(id) {
+            if (this.useIndexedDB) {
+                return this.deleteFromIndexedDB(id);
+            } else {
+                return this.deleteFromLocalStorage(id);
+            }
+        }
+        
+        static saveToIndexedDB(lorebook) {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('RoleplayChatDB', 1);
+                request.onerror = () => reject(request.error);
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains('lorebooks')) {
+                        db.createObjectStore('lorebooks', { keyPath: 'id' });
+                    }
+                };
+                request.onsuccess = (event) => {
+                    const db = event.target.result;
+                    const transaction = db.transaction(['lorebooks'], 'readwrite');
+                    const store = transaction.objectStore('lorebooks');
+                    store.put(lorebook);
+                    transaction.oncomplete = () => { db.close(); resolve(); };
+                    transaction.onerror = () => { db.close(); reject(transaction.error); };
+                };
+            });
+        }
+        
+        static getFromIndexedDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('RoleplayChatDB', 1);
+                request.onerror = () => reject(request.error);
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains('lorebooks')) {
+                        db.createObjectStore('lorebooks', { keyPath: 'id' });
+                    }
+                };
+                request.onsuccess = (event) => {
+                    const db = event.target.result;
+                    const transaction = db.transaction(['lorebooks'], 'readonly');
+                    const store = transaction.objectStore('lorebooks');
+                    const getAllRequest = store.getAll();
+                    getAllRequest.onsuccess = () => { db.close(); resolve(getAllRequest.result || []); };
+                    getAllRequest.onerror = () => { db.close(); reject(getAllRequest.error); };
+                };
+            });
+        }
+        
+        static deleteFromIndexedDB(id) {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('RoleplayChatDB', 1);
+                request.onerror = () => reject(request.error);
+                request.onsuccess = (event) => {
+                    const db = event.target.result;
+                    const transaction = db.transaction(['lorebooks'], 'readwrite');
+                    const store = transaction.objectStore('lorebooks');
+                    store.delete(id);
+                    transaction.oncomplete = () => { db.close(); resolve(); };
+                    transaction.onerror = () => { db.close(); reject(transaction.error); };
+                };
+            });
+        }
+        
+        static saveToLocalStorage(lorebook) {
+            try {
+                const lorebooks = StorageManager.getItem('lorebooks') || [];
+                const index = lorebooks.findIndex(lb => lb.id === lorebook.id);
+                if (index > -1) {
+                    lorebooks[index] = lorebook;
+                } else {
+                    lorebooks.push(lorebook);
+                }
+                StorageManager.setItem('lorebooks', lorebooks);
+                return Promise.resolve();
+            } catch (e) {
+                return Promise.reject(e);
+            }
+        }
+        
+        static getFromLocalStorage() {
+            try {
+                const lorebooks = StorageManager.getItem('lorebooks') || [];
+                return Promise.resolve(lorebooks);
+            } catch (e) {
+                return Promise.resolve([]);
+            }
+        }
+        
+        static deleteFromLocalStorage(id) {
+            try {
+                let lorebooks = StorageManager.getItem('lorebooks') || [];
+                lorebooks = lorebooks.filter(lb => lb.id !== id);
+                StorageManager.setItem('lorebooks', lorebooks);
+                return Promise.resolve();
+            } catch (e) {
+                return Promise.reject(e);
+            }
+        }
     }
 
-    render();
-  </script>
+    class ChatApp {
+        constructor() {
+            this.chats = [];
+            this.currentChatId = null;
+            this.debugMode = false;
+            this.availableModels = [];
+            this.selectedModel = null;
+            this.lorebooks = [];
+            this.currentView = 'chat'; // 'chat' or 'lore'
+            this.init();
+        }
+
+        async init() {
+            console.log('=== App Initialization ===');
+            
+            await LorebookStorage.init();
+            await this.loadLorebooks();
+            
+            this.loadFromStorage();
+            this.bindEvents();
+            this.renderChatList();
+            
+            if (this.chats.length === 0) {
+                this.createNewChat();
+            } else {
+                this.switchToChat(this.chats[0].id);
+            }
+
+            this.loadSettings();
+            this.debug('App initialized', 'info');
+            
+            const apiKey = this.getApiKey();
+            if (apiKey) {
+                this.fetchModels(apiKey);
+            }
+        }
+
+        debug(message, type = 'info') {
+            console.log(`[${type.toUpperCase()}] ${message}`);
+            
+            if (!this.debugMode) return;
+            
+            const debugContent = document.getElementById('debugContent');
+            if (!debugContent) return;
+            const line = document.createElement('div');
+            line.className = `debug-line ${type}`;
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            debugContent.appendChild(line);
+            debugContent.scrollTop = debugContent.scrollHeight;
+        }
+
+        getApiKey() {
+            return StorageManager.getItem('openrouter_api_key') || '';
+        }
+
+        getModel() {
+            return StorageManager.getItem('openrouter_model') || null;
+        }
+
+        async loadLorebooks() {
+            try {
+                this.lorebooks = await LorebookStorage.getAllLorebooks();
+                console.log(`Loaded ${this.lorebooks.length} lorebooks`);
+            } catch (e) {
+                console.error('Failed to load lorebooks:', e);
+                this.lorebooks = [];
+            }
+        }
+
+        async importLorebook(file) {
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+                
+                if (!data.entries) {
+                    throw new Error('Invalid lorebook format: missing "entries"');
+                }
+                
+                const entries = Object.values(data.entries).map(entry => ({
+                    uid: entry.uid,
+                    keys: entry.key || [],
+                    keysecondary: entry.keysecondary || [],
+                    comment: entry.comment || `Entry ${entry.uid}`,
+                    content: entry.content || '',
+                    order: entry.order || 100,
+                    disabled: entry.disable || false
+                }));
+                
+                const lorebook = {
+                    id: this.generateId(),
+                    name: file.name.replace('.json', ''),
+                    entries: entries,
+                    imported: Date.now()
+                };
+                
+                await LorebookStorage.saveLorebook(lorebook);
+                this.lorebooks.push(lorebook);
+                
+                if (this.currentView === 'lore') {
+                    this.renderLoreManagement();
+                }
+                
+                this.debug(`Imported lorebook: ${lorebook.name} (${entries.length} entries)`, 'success');
+                alert(`Lorebook imported: ${lorebook.name} (${entries.length} entries)`);
+                
+            } catch (e) {
+                console.error('Import error:', e);
+                alert(`Failed to import lorebook: ${e.message}`);
+            }
+        }
+
+        toggleLorebookForCurrentChat(lorebookId) {
+            const chat = this.chats.find(c => c.id === this.currentChatId);
+            if (!chat) return;
+            
+            if (!chat.activeLorebooks) {
+                chat.activeLorebooks = [];
+            }
+            
+            const index = chat.activeLorebooks.indexOf(lorebookId);
+            if (index > -1) {
+                chat.activeLorebooks.splice(index, 1);
+            } else {
+                chat.activeLorebooks.push(lorebookId);
+            }
+            
+            this.saveToStorage();
+            if (this.currentView === 'lore') {
+                this.renderLoreManagement();
+            }
+        }
+
+        getActiveLorebooks() {
+            const chat = this.chats.find(c => c.id === this.currentChatId);
+            if (!chat || !chat.activeLorebooks) return [];
+            return this.lorebooks.filter(lb => chat.activeLorebooks.includes(lb.id));
+        }
+
+        getMatchedLoreEntries(userMessage) {
+            const activeLorebooks = this.getActiveLorebooks();
+            const matchedEntries = [];
+            
+            activeLorebooks.forEach(lorebook => {
+                lorebook.entries.forEach(entry => {
+                    if (entry.disabled) return;
+                    
+                    const allKeys = [...entry.keys, ...entry.keysecondary];
+                    const matched = allKeys.some(key => 
+                        userMessage.toLowerCase().includes(key.toLowerCase())
+                    );
+                    
+                    if (matched) {
+                        matchedEntries.push({
+                            comment: entry.comment,
+                            content: entry.content,
+                            order: entry.order
+                        });
+                    }
+                });
+            });
+            
+            matchedEntries.sort((a, b) => a.order - b.order);
+            return matchedEntries;
+        }
+
+        buildLorebookContext(userMessage) {
+            const matchedEntries = this.getMatchedLoreEntries(userMessage);
+            if (matchedEntries.length === 0) return '';
+            
+            let context = '\n\n[Lorebook Context]\n';
+            matchedEntries.forEach(entry => {
+                context += `--- ${entry.comment} ---\n${entry.content}\n\n`;
+            });
+            context += '[End Lorebook Context]\n';
+            
+            return context;
+        }
+
+        toggleView() {
+            if (this.currentView === 'chat') {
+                this.currentView = 'lore';
+                document.getElementById('chatArea').style.display = 'none';
+                document.getElementById('loreManagementView').classList.add('active');
+                document.getElementById('loreManagementView').style.display = 'block';
+                document.getElementById('viewToggleBtn').textContent = '💬 Back to Chat';
+                document.getElementById('chatTitle').textContent = 'Lore Management';
+                this.renderLoreManagement();
+            } else {
+                this.currentView = 'chat';
+                document.getElementById('chatArea').style.display = 'flex';
+                document.getElementById('loreManagementView').classList.remove('active');
+                document.getElementById('loreManagementView').style.display = 'none';
+                document.getElementById('viewToggleBtn').textContent = '📚 Lore Management';
+                this.updateChatTitle();
+            }
+        }
+
+        renderLoreManagement() {
+            const container = document.getElementById('loreManagementView');
+            container.innerHTML = '';
+            
+            // Import button at top
+            const importBtn = document.createElement('button');
+            importBtn.className = 'sidebar-action-btn';
+            importBtn.textContent = '📚 Import Lorebook';
+            importBtn.style.marginBottom = '16px';
+            importBtn.addEventListener('click', () => {
+                document.getElementById('lorebookFileInput').click();
+            });
+            container.appendChild(importBtn);
+            
+            const chat = this.chats.find(c => c.id === this.currentChatId);
+            
+            if (this.lorebooks.length === 0) {
+                const emptyMsg = document.createElement('div');
+                emptyMsg.style.cssText = 'color: var(--text-secondary); text-align: center; padding: 40px 0;';
+                emptyMsg.textContent = 'No lorebooks imported yet.\nUse the Import button above to load one.';
+                container.appendChild(emptyMsg);
+                return;
+            }
+            
+            // Display all lorebooks
+            this.lorebooks.forEach(lorebook => {
+                const section = document.createElement('div');
+                section.className = 'lorebook-section';
+                
+                // Header with name and toggle
+                const sectionHeader = document.createElement('div');
+                sectionHeader.className = 'lorebook-section-header';
+                
+                const titleSpan = document.createElement('span');
+                titleSpan.className = 'lorebook-section-title';
+                titleSpan.textContent = `${lorebook.name} (${lorebook.entries.length} entries)`;
+                
+                const toggle = document.createElement('div');
+                toggle.className = 'lorebook-toggle';
+                
+                const isActive = chat && chat.activeLorebooks && chat.activeLorebooks.includes(lorebook.id);
+                if (isActive) {
+                    toggle.classList.add('active');
+                }
+                
+                const knob = document.createElement('div');
+                knob.className = 'lorebook-toggle-knob';
+                toggle.appendChild(knob);
+                
+                toggle.addEventListener('click', () => {
+                    this.toggleLorebookForCurrentChat(lorebook.id);
+                });
+                
+                sectionHeader.appendChild(titleSpan);
+                sectionHeader.appendChild(toggle);
+                section.appendChild(sectionHeader);
+                
+                // Entries
+                lorebook.entries.forEach(entry => {
+                    const entryDiv = document.createElement('div');
+                    entryDiv.className = 'lorebook-entry';
+                    
+                    const entryHeader = document.createElement('div');
+                    entryHeader.className = 'lorebook-entry-header';
+                    
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'lorebook-entry-name';
+                    nameSpan.textContent = entry.comment;
+                    
+                    const editBtn = document.createElement('button');
+                    editBtn.className = 'edit-btn';
+                    editBtn.textContent = 'Edit';
+                    editBtn.addEventListener('click', () => {
+                        this.editEntry(lorebook, entry, entryDiv);
+                    });
+                    
+                    entryHeader.appendChild(nameSpan);
+                    entryHeader.appendChild(editBtn);
+                    entryDiv.appendChild(entryHeader);
+                    
+                    // Keys
+                    const keysDiv = document.createElement('div');
+                    keysDiv.className = 'lorebook-entry-keys';
+                    keysDiv.textContent = `Keys: ${entry.keys.join(', ')}`;
+                    entryDiv.appendChild(keysDiv);
+                    
+                    // Content
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'lorebook-entry-content';
+                    contentDiv.textContent = entry.content;
+                    entryDiv.appendChild(contentDiv);
+                    
+                    section.appendChild(entryDiv);
+                });
+                
+                container.appendChild(section);
+            });
+        }
+
+        editEntry(lorebook, entry, entryDiv) {
+            entryDiv.innerHTML = '';
+            
+            const form = document.createElement('div');
+            form.className = 'edit-form';
+            
+            const nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.value = entry.comment;
+            nameInput.placeholder = 'Entry name';
+            
+            const keysInput = document.createElement('input');
+            keysInput.type = 'text';
+            keysInput.value = entry.keys.join(', ');
+            keysInput.placeholder = 'Keys (comma separated)';
+            
+            const contentTextarea = document.createElement('textarea');
+            contentTextarea.value = entry.content;
+            contentTextarea.placeholder = 'Content';
+            
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'edit-actions';
+            
+            const saveBtn = document.createElement('button');
+            saveBtn.className = 'save-btn';
+            saveBtn.textContent = 'Save';
+            saveBtn.addEventListener('click', async () => {
+                entry.comment = nameInput.value.trim() || entry.comment;
+                entry.keys = keysInput.value.split(',').map(k => k.trim()).filter(k => k);
+                entry.content = contentTextarea.value;
+                
+                await LorebookStorage.saveLorebook(lorebook);
+                this.renderLoreManagement();
+                this.debug(`Updated entry: ${entry.comment}`, 'success');
+            });
+            
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'cancel-btn';
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.addEventListener('click', () => {
+                this.renderLoreManagement();
+            });
+            
+            actionsDiv.appendChild(saveBtn);
+            actionsDiv.appendChild(cancelBtn);
+            
+            form.appendChild(nameInput);
+            form.appendChild(keysInput);
+            form.appendChild(contentTextarea);
+            form.appendChild(actionsDiv);
+            
+            entryDiv.appendChild(form);
+        }
+
+        loadFromStorage() {
+            try {
+                const stored = StorageManager.getItem('roleplay_chats');
+                if (stored) {
+                    this.chats = stored;
+                }
+            } catch (e) {
+                console.error('Error loading from storage:', e);
+            }
+        }
+
+        saveToStorage() {
+            try {
+                StorageManager.setItem('roleplay_chats', this.chats);
+                this.debug('Chats saved to storage', 'success');
+            } catch (e) {
+                console.error('Error saving to storage:', e);
+            }
+        }
+
+        loadSettings() {
+            const apiKey = this.getApiKey();
+            const model = this.getModel();
+            
+            if (apiKey) {
+                document.getElementById('apiKeyInput').value = apiKey;
+            }
+            
+            if (model) {
+                this.selectedModel = model;
+                document.getElementById('modelSelect').textContent = model;
+            }
+        }
+
+        saveSettings() {
+            const apiKeyInput = document.getElementById('apiKeyInput');
+            const apiKey = apiKeyInput ? apiKeyInput.value : '';
+            
+            if (apiKey) {
+                StorageManager.setItem('openrouter_api_key', apiKey);
+            } else {
+                StorageManager.removeItem('openrouter_api_key');
+            }
+            
+            if (this.selectedModel) {
+                StorageManager.setItem('openrouter_model', this.selectedModel);
+            } else {
+                StorageManager.removeItem('openrouter_model');
+            }
+            
+            this.showSaveIndicator();
+        }
+
+        showSaveIndicator() {
+            const indicator = document.getElementById('saveIndicator');
+            if (!indicator) return;
+            
+            indicator.textContent = '✓ Saved';
+            indicator.classList.add('visible');
+            
+            clearTimeout(this._saveIndicatorTimeout);
+            this._saveIndicatorTimeout = setTimeout(() => {
+                indicator.classList.remove('visible');
+            }, 2000);
+        }
+
+        createNewChat() {
+            const newChat = {
+                id: this.generateId(),
+                name: `Chat ${this.chats.length + 1}`,
+                messages: [],
+                created: Date.now(),
+                activeLorebooks: []
+            };
+            
+            this.chats.unshift(newChat);
+            this.currentChatId = newChat.id;
+            this.saveToStorage();
+            this.renderChatList();
+            this.renderMessages();
+            this.updateChatTitle();
+            this.closeSidebar();
+        }
+
+        generateId() {
+            return Date.now().toString(36) + Math.random().toString(36).substr(2);
+        }
+
+        switchToChat(chatId) {
+            const chat = this.chats.find(c => c.id === chatId);
+            if (!chat) return;
+            
+            this.currentChatId = chatId;
+            
+            if (this.currentView === 'chat') {
+                this.renderMessages();
+                this.updateChatTitle();
+            }
+            
+            this.renderChatList();
+            this.closeSidebar();
+        }
+
+        deleteCurrentChat() {
+            if (!this.currentChatId) return;
+            
+            const chat = this.chats.find(c => c.id === this.currentChatId);
+            if (!chat) return;
+            
+            if (!confirm(`Delete chat "${chat.name}"?`)) return;
+            
+            this.chats = this.chats.filter(c => c.id !== this.currentChatId);
+            
+            if (this.chats.length === 0) {
+                this.currentChatId = null;
+                this.renderMessages();
+                this.updateChatTitle();
+            } else {
+                this.switchToChat(this.chats[0].id);
+            }
+            
+            this.saveToStorage();
+            this.renderChatList();
+        }
+
+        duplicateCurrentChat() {
+            if (!this.currentChatId) return;
+            
+            const chat = this.chats.find(c => c.id === this.currentChatId);
+            if (!chat) return;
+            
+            const newChat = {
+                ...chat,
+                id: this.generateId(),
+                name: `${chat.name} (Copy)`,
+                messages: chat.messages.map(m => ({...m})),
+                created: Date.now()
+            };
+            
+            this.chats.unshift(newChat);
+            this.currentChatId = newChat.id;
+            this.saveToStorage();
+            this.renderChatList();
+            this.renderMessages();
+            this.updateChatTitle();
+            this.closeSidebar();
+        }
+
+        exportCurrentChat() {
+            if (!this.currentChatId) return;
+            
+            const chat = this.chats.find(c => c.id === this.currentChatId);
+            if (!chat) return;
+            
+            const blob = new Blob([JSON.stringify(chat, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${chat.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        async sendMessage() {
+            const input = document.getElementById('messageInput');
+            const content = input.value.trim();
+            
+            if (!content || !this.currentChatId) return;
+            
+            const chat = this.chats.find(c => c.id === this.currentChatId);
+            if (!chat) return;
+            
+            chat.messages.push({
+                role: 'user',
+                content: content
+            });
+            
+            input.value = '';
+            this.autoResizeInput();
+            
+            this.saveToStorage();
+            this.renderMessages();
+            
+            const apiKey = this.getApiKey();
+            
+            if (apiKey && this.selectedModel) {
+                await this.sendToOpenRouter(chat, apiKey, this.selectedModel, content);
+            } else {
+                chat.messages.push({
+                    role: 'assistant',
+                    content: `[No ${!apiKey ? 'API key' : 'model'} selected.]\n\nYou said: ${content}`
+                });
+                
+                this.saveToStorage();
+                this.renderMessages();
+            }
+        }
+
+        async sendToOpenRouter(chat, apiKey, model, userMessage) {
+            const sendButton = document.getElementById('sendButton');
+            const typingIndicator = document.getElementById('typingIndicator');
+            
+            sendButton.disabled = true;
+            typingIndicator.classList.add('active');
+            
+            const lorebookContext = this.buildLorebookContext(userMessage);
+            const systemPrompt = `You are a helpful AI assistant engaged in roleplay.${lorebookContext}`;
+            
+            try {
+                const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json',
+                        'HTTP-Referer': window.location.href,
+                        'X-Title': 'Roleplay Chat'
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: [
+                            { role: 'system', content: systemPrompt },
+                            ...chat.messages.map(m => ({
+                                role: m.role,
+                                content: m.content
+                            }))
+                        ],
+                        temperature: 0.7,
+                        max_tokens: 500
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const assistantMessage = data.choices[0].message.content;
+                
+                chat.messages.push({
+                    role: 'assistant',
+                    content: assistantMessage
+                });
+                
+                this.saveToStorage();
+                this.renderMessages();
+                
+            } catch (error) {
+                chat.messages.push({
+                    role: 'assistant',
+                    content: `[Error: ${error.message}]`
+                });
+                
+                this.saveToStorage();
+                this.renderMessages();
+                
+            } finally {
+                sendButton.disabled = false;
+                typingIndicator.classList.remove('active');
+            }
+        }
+
+        async fetchModels(apiKey) {
+            try {
+                const response = await fetch('https://openrouter.ai/api/v1/models', {
+                    headers: { 'Authorization': `Bearer ${apiKey}` }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    this.availableModels = data.data;
+                    this.renderModelOptions();
+                }
+            } catch (error) {
+                console.error('Failed to fetch models:', error);
+            }
+        }
+
+        async testConnection() {
+            const apiKey = this.getApiKey();
+            
+            if (!apiKey) {
+                alert('Please enter an OpenRouter API key first.');
+                return;
+            }
+            
+            this.saveSettings();
+            
+            const testBtn = document.getElementById('testConnectionBtn');
+            testBtn.textContent = '⏳ Testing...';
+            testBtn.disabled = true;
+            
+            try {
+                const response = await fetch('https://openrouter.ai/api/v1/models', {
+                    headers: { 'Authorization': `Bearer ${apiKey}` }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    this.availableModels = data.data;
+                    this.renderModelOptions();
+                    alert(`Connection successful! ${data.data.length} models available.`);
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                alert(`Connection failed: ${error.message}`);
+            } finally {
+                testBtn.textContent = '🔌 Test Connection';
+                testBtn.disabled = false;
+            }
+        }
+
+        renderModelOptions(filter = '') {
+            const modelOptions = document.getElementById('modelOptions');
+            modelOptions.innerHTML = '';
+            
+            if (this.availableModels.length === 0) {
+                modelOptions.innerHTML = '<div class="model-option">No models loaded.</div>';
+                return;
+            }
+            
+            const filtered = this.availableModels.filter(model => {
+                if (!filter) return true;
+                const term = filter.toLowerCase();
+                return model.id.toLowerCase().includes(term) || 
+                       (model.name && model.name.toLowerCase().includes(term));
+            });
+            
+            filtered.forEach(model => {
+                const option = document.createElement('div');
+                option.className = 'model-option';
+                if (model.id === this.selectedModel) {
+                    option.classList.add('selected');
+                }
+                option.textContent = model.name || model.id;
+                
+                option.addEventListener('click', () => {
+                    this.selectedModel = model.id;
+                    document.getElementById('modelSelect').textContent = model.name || model.id;
+                    this.closeModelDropdown();
+                    this.saveSettings();
+                });
+                
+                modelOptions.appendChild(option);
+            });
+        }
+
+        renderMessages() {
+            const messagesContainer = document.getElementById('messages');
+            messagesContainer.innerHTML = '';
+            
+            if (!this.currentChatId) return;
+            
+            const chat = this.chats.find(c => c.id === this.currentChatId);
+            if (!chat) return;
+            
+            chat.messages.forEach((message) => {
+                const messageElement = document.createElement('div');
+                messageElement.className = `message ${message.role}`;
+                
+                const roleLabel = document.createElement('div');
+                roleLabel.className = 'message-role';
+                roleLabel.textContent = message.role === 'user' ? 'You' : 'Assistant';
+                
+                const contentElement = document.createElement('div');
+                contentElement.className = 'message-content';
+                contentElement.textContent = message.content;
+                
+                messageElement.appendChild(roleLabel);
+                messageElement.appendChild(contentElement);
+                messagesContainer.appendChild(messageElement);
+            });
+            
+            setTimeout(() => {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }, 50);
+        }
+
+        renderChatList() {
+            const chatList = document.getElementById('chatList');
+            chatList.innerHTML = '';
+            
+            this.chats.forEach(chat => {
+                const chatItem = document.createElement('div');
+                chatItem.className = 'chat-list-item';
+                if (chat.id === this.currentChatId) {
+                    chatItem.classList.add('active');
+                }
+                
+                chatItem.textContent = chat.name;
+                
+                chatItem.addEventListener('click', () => {
+                    this.switchToChat(chat.id);
+                });
+                
+                chatList.appendChild(chatItem);
+            });
+        }
+
+        updateChatTitle() {
+            const chatTitle = document.getElementById('chatTitle');
+            if (this.currentView === 'lore') {
+                chatTitle.textContent = 'Lore Management';
+                return;
+            }
+            
+            if (!this.currentChatId) {
+                chatTitle.textContent = 'New Chat';
+                return;
+            }
+            
+            const chat = this.chats.find(c => c.id === this.currentChatId);
+            chatTitle.textContent = chat ? chat.name : 'New Chat';
+        }
+
+        openSidebar() {
+            document.getElementById('sidebar').classList.add('open');
+            document.getElementById('sidebarOverlay').classList.add('active');
+        }
+
+        closeSidebar() {
+            document.getElementById('sidebar').classList.remove('open');
+            document.getElementById('sidebarOverlay').classList.remove('active');
+        }
+
+        toggleDebug() {
+            this.debugMode = !this.debugMode;
+            const debugPanel = document.getElementById('debugPanel');
+            
+            if (this.debugMode) {
+                debugPanel.classList.add('active');
+                this.debug('=== Debug mode enabled ===', 'info');
+            } else {
+                debugPanel.classList.remove('active');
+            }
+        }
+
+        copyDebugInfo() {
+            const debugContent = document.getElementById('debugContent');
+            navigator.clipboard.writeText(debugContent.innerText).then(() => {
+                const btn = document.getElementById('copyDebugBtn');
+                btn.textContent = '✅ Copied!';
+                setTimeout(() => { btn.textContent = '📋 Copy All'; }, 2000);
+            });
+        }
+
+        autoResizeInput() {
+            const input = document.getElementById('messageInput');
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+        }
+
+        bindEvents() {
+            document.getElementById('hamburgerBtn').addEventListener('click', () => this.openSidebar());
+            document.getElementById('closeSidebarBtn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.closeSidebar();
+            });
+            document.getElementById('sidebarOverlay').addEventListener('click', () => this.closeSidebar());
+            document.getElementById('newChatBtn').addEventListener('click', () => this.createNewChat());
+            
+            // View toggle
+            document.getElementById('viewToggleBtn').addEventListener('click', () => this.toggleView());
+            
+            document.getElementById('deleteChatBtn').addEventListener('click', () => this.deleteCurrentChat());
+            document.getElementById('duplicateChatBtn').addEventListener('click', () => this.duplicateCurrentChat());
+            document.getElementById('exportChatBtn').addEventListener('click', () => this.exportCurrentChat());
+            document.getElementById('debugToggleBtn').addEventListener('click', () => this.toggleDebug());
+            document.getElementById('copyDebugBtn').addEventListener('click', () => this.copyDebugInfo());
+            document.getElementById('sendButton').addEventListener('click', () => this.sendMessage());
+            
+            const messageInput = document.getElementById('messageInput');
+            messageInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    this.sendMessage();
+                }
+            });
+            messageInput.addEventListener('input', () => this.autoResizeInput());
+            
+            document.getElementById('apiKeyInput').addEventListener('input', () => {
+                this.saveSettings();
+                const apiKey = this.getApiKey();
+                if (apiKey) this.fetchModels(apiKey);
+            });
+            
+            document.getElementById('modelSelectWrapper').addEventListener('click', () => {
+                const dropdown = document.getElementById('modelDropdown');
+                dropdown.classList.toggle('active');
+                if (dropdown.classList.contains('active')) {
+                    document.getElementById('modelSearch').value = '';
+                    this.renderModelOptions();
+                }
+            });
+            
+            document.getElementById('modelSearch').addEventListener('input', (e) => {
+                this.renderModelOptions(e.target.value);
+            });
+            
+            document.getElementById('testConnectionBtn').addEventListener('click', () => this.testConnection());
+            
+            // Hidden file input for lorebook import
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = '.json';
+            fileInput.style.display = 'none';
+            fileInput.id = 'lorebookFileInput';
+            document.body.appendChild(fileInput);
+            
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    this.importLorebook(e.target.files[0]);
+                }
+                e.target.value = '';
+            });
+            
+            document.addEventListener('click', (e) => {
+                const dropdown = document.getElementById('modelDropdown');
+                const wrapper = document.getElementById('modelSelectWrapper');
+                if (dropdown.classList.contains('active') && 
+                    !dropdown.contains(e.target) && 
+                    !wrapper.contains(e.target)) {
+                    dropdown.classList.remove('active');
+                }
+            });
+            
+            window.addEventListener('resize', () => {
+                const vh = window.innerHeight * 0.01;
+                document.documentElement.style.setProperty('--vh', `${vh}px`);
+            });
+            
+            const vh = window.innerHeight * 0.01;
+            document.documentElement.style.setProperty('--vh', `${vh}px`);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        window.app = new ChatApp();
+    });
+    </script>
 </body>
 </html>
