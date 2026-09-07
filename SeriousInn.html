@@ -766,6 +766,24 @@
             border-bottom: 1px solid var(--border);
         }
 
+        .header-title-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-actions-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .lorebook-entry-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
         .lorebook-section-title {
             font-size: 16px;
             font-weight: 600;
@@ -785,6 +803,11 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 8px;
+        }
+
+        .entry-actions-group {
+            display: flex;
+            gap: 4px;
         }
 
         .lorebook-entry-name {
@@ -888,6 +911,47 @@
 
         .lorebook-toggle.active .lorebook-toggle-knob {
             left: 23px;
+        }
+
+        .lorebook-collapse-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .lorebook-collapse-btn:active {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .lorebook-entries {
+            transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
+            overflow: hidden;
+        }
+
+        .lorebook-entries.collapsed {
+            max-height: 0 !important;
+            opacity: 0;
+        }
+
+        .lorebook-entry-delete-btn {
+            background: none;
+            border: none;
+            color: var(--danger);
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .lorebook-entry-delete-btn:active {
+            background: rgba(255, 68, 68, 0.1);
         }
 
         .add-entry-btn {
@@ -1650,6 +1714,14 @@
                 titleSpan.className = 'lorebook-section-title';
                 titleSpan.textContent = `${lorebook.name} (${lorebook.entries.length} entries)`;
                 
+                const collapseBtn = document.createElement('button');
+                collapseBtn.className = 'lorebook-collapse-btn';
+                collapseBtn.textContent = lorebook.collapsed ? '▶' : '▼';
+                collapseBtn.addEventListener('click', () => {
+                    lorebook.collapsed = !lorebook.collapsed;
+                    this.renderLoreManagement();
+                });
+                
                 const toggle = document.createElement('div');
                 toggle.className = 'lorebook-toggle';
                 
@@ -1673,10 +1745,25 @@
                     this.addEntry(lorebook);
                 });
                 
-                sectionHeader.appendChild(titleSpan);
-                sectionHeader.appendChild(toggle);
-                sectionHeader.appendChild(addEntryBtn);
+                const titleGroup = document.createElement('div');
+                titleGroup.className = 'header-title-group';
+                titleGroup.appendChild(toggle);
+                titleGroup.appendChild(titleSpan);
+                
+                const actionsGroup = document.createElement('div');
+                actionsGroup.className = 'header-actions-group';
+                actionsGroup.appendChild(collapseBtn);
+                actionsGroup.appendChild(addEntryBtn);
+                
+                sectionHeader.appendChild(titleGroup);
+                sectionHeader.appendChild(actionsGroup);
                 section.appendChild(sectionHeader);
+                
+                const entriesContainer = document.createElement('div');
+                entriesContainer.className = 'lorebook-entries';
+                if (lorebook.collapsed) {
+                    entriesContainer.classList.add('collapsed');
+                }
                 
                 lorebook.entries.forEach(entry => {
                     const entryDiv = document.createElement('div');
@@ -1696,8 +1783,23 @@
                         this.editEntry(lorebook, entry, entryDiv);
                     });
                     
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'lorebook-entry-delete-btn';
+                    deleteBtn.textContent = '✕';
+                    deleteBtn.addEventListener('click', () => {
+                        if (confirm(`Delete entry "${entry.comment}"?`)) {
+                            lorebook.entries = lorebook.entries.filter(e => e.uid !== entry.uid);
+                            this.renderLoreManagement();
+                        }
+                    });
+                    
+                    const actionsContainer = document.createElement('div');
+                    actionsContainer.className = 'lorebook-entry-actions';
+                    actionsContainer.appendChild(editBtn);
+                    actionsContainer.appendChild(deleteBtn);
+                    
                     entryHeader.appendChild(nameSpan);
-                    entryHeader.appendChild(editBtn);
+                    entryHeader.appendChild(actionsContainer);
                     entryDiv.appendChild(entryHeader);
                     
                     const keysDiv = document.createElement('div');
@@ -1710,9 +1812,10 @@
                     contentDiv.textContent = entry.content;
                     entryDiv.appendChild(contentDiv);
                     
-                    section.appendChild(entryDiv);
+                    entriesContainer.appendChild(entryDiv);
                 });
                 
+                section.appendChild(entriesContainer);
                 container.appendChild(section);
             });
         }
@@ -2599,11 +2702,9 @@
             const message = chat.messages[index];
             if (!message || message.role !== 'user') return;
             
-            // Remove this user message and everything after it
+            // The user message is already in the history, just re-send it
             const userMessage = message.content;
-            chat.messages.splice(index);
             
-            // Re-send the user message
             const apiKey = this.getApiKey();
             if (apiKey && this.selectedModel) {
                 await this.sendToOpenRouter(chat, apiKey, this.selectedModel, userMessage);
