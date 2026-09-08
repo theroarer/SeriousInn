@@ -1326,6 +1326,8 @@
             this.selectedModel = null;
             this.lorebooks = [];
             this.currentView = 'chat'; // 'chat', 'lore', or 'settings'
+            this.abortController = null;
+            this.isResponding = false;
             this.llmSettings = {
                 temperature: 0.5,
                 top_p: 1.0,
@@ -1335,8 +1337,7 @@
                 repetition_penalty: 1.0,
                 min_p: 0.0,
                 top_a: 0.0,
-                max_tokens: 4096,
-                stream: true
+                max_tokens: 4096
             };
             this.init();
         }
@@ -1644,29 +1645,6 @@
             form.appendChild(createSlider('Min P', 'min_p', 0, 1, 0.05));
             form.appendChild(createSlider('Top A', 'top_a', 0, 1, 0.05));
             form.appendChild(createNumberInput('Max Tokens', 'max_tokens', 1, 8192));
-            
-            const streamRow = document.createElement('div');
-            streamRow.className = 'setting-row';
-            streamRow.style.display = 'flex';
-            streamRow.style.alignItems = 'center';
-            streamRow.style.gap = '8px';
-            
-            const streamCheckbox = document.createElement('input');
-            streamCheckbox.type = 'checkbox';
-            streamCheckbox.checked = settings.stream;
-            streamCheckbox.style.width = '20px';
-            streamCheckbox.style.height = '20px';
-            streamCheckbox.addEventListener('change', () => {
-                settings.stream = streamCheckbox.checked;
-            });
-            
-            const streamLabel = document.createElement('span');
-            streamLabel.textContent = 'Enable Streaming';
-            streamLabel.style.color = 'var(--text-secondary)';
-            
-            streamRow.appendChild(streamCheckbox);
-            streamRow.appendChild(streamLabel);
-            form.appendChild(streamRow);
             
             const saveBtn = document.createElement('button');
             saveBtn.textContent = 'Save Settings';
@@ -2140,6 +2118,8 @@
             const apiKey = this.getApiKey();
             
             if (apiKey && this.selectedModel) {
+                this.isResponding = true;
+                this.updateSendButton();
                 await this.sendToOpenRouter(chat, apiKey, this.selectedModel, content);
             } else {
                 chat.messages.push({
@@ -2156,7 +2136,7 @@
             const sendButton = document.getElementById('sendButton');
             const typingIndicator = document.getElementById('typingIndicator');
             
-            sendButton.disabled = true;
+            this.abortController = new AbortController();
             typingIndicator.classList.add('active');
             
             const lorebookContext = this.buildLorebookContext(userMessage);
@@ -2179,8 +2159,7 @@
                 repetition_penalty: this.llmSettings.repetition_penalty,
                 min_p: this.llmSettings.min_p,
                 top_a: this.llmSettings.top_a,
-                max_tokens: this.llmSettings.max_tokens,
-                stream: this.llmSettings.stream
+                max_tokens: this.llmSettings.max_tokens
             };
             
             try {
@@ -2192,7 +2171,8 @@
                         'HTTP-Referer': window.location.href,
                         'X-Title': 'Roleplay Chat'
                     },
-                    body: JSON.stringify(requestBody)
+                    body: JSON.stringify(requestBody),
+                    signal: this.abortController.signal
                 });
                 
                 if (!response.ok) {
@@ -2211,75 +2191,22 @@
                 let finishReason = null;
                 let usage = null;
                 
-                if (this.llmSettings.stream) {
-                    // Handle SSE streaming response
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder();
-                    let buffer = '';
-                    
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-                        
-                        buffer += decoder.decode(value, { stream: true });
-                        const lines = buffer.split('\n');
-                        buffer = lines.pop() || '';
-                        
-                        for (const line of lines) {
-                            if (line.startsWith('data: ')) {
-                                const dataStr = line.slice(6);
-                                if (dataStr === '[DONE]') continue;
-                                
-                                try {
-                                    const chunk = JSON.parse(dataStr);
-                                    const content = chunk.choices[0]?.delta?.content;
-                                    if (content) {
-                                        assistantMessage += content;
-                                    }
-                                    if (chunk.choices[0]?.finish_reason) {
-                                        finishReason = chunk.choices[0].finish_reason;
-                                    }
-                                    if (chunk.usage) {
-                                        usage = chunk.usage;
-                                    }
-                                } catch {
-                                    // Skip unparseable chunks
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Process remaining buffer
-                    for (const line of buffer.split('\n')) {
-                        if (line.startsWith('data: ')) {
-                            const dataStr = line.slice(6);
-                            if (dataStr === '[DONE]') continue;
-                            try {
-                                const chunk = JSON.parse(dataStr);
-                                const content = chunk.choices[0]?.delta?.content;
-                                if (content) assistantMessage += content;
-                                if (chunk.choices[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason;
-                            } catch {}
-                        }
-                    }
-                } else {
-                    // Handle non-streaming response
-                    const responseText = await response.text();
-                    let data;
-                    try {
-                        data = JSON.parse(responseText);
-                    } catch (parseError) {
-                        throw new Error(`Invalid JSON response from server. Status: ${response.status}. Body: ${responseText.substring(0, 500)}`);
-                    }
-                    
-                    if (!data.choices || !data.choices[0]) {
-                        throw new Error(`Unexpected response format. Status: ${response.status}. Body: ${responseText.substring(0, 500)}`);
-                    }
-                    
-                    assistantMessage = data.choices[0].message.content;
-                    finishReason = data.choices[0].finish_reason;
-                    usage = data.usage;
+                // Handle non-streaming response
+                const responseText = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (parseError) {
+                    throw new Error(`Invalid JSON response from server. Status: ${response.status}. Body: ${responseText.substring(0, 500)}`);
                 }
+                
+                if (!data.choices || !data.choices[0]) {
+                    throw new Error(`Unexpected response format. Status: ${response.status}. Body: ${responseText.substring(0, 500)}`);
+                }
+                
+                assistantMessage = data.choices[0].message.content;
+                finishReason = data.choices[0].finish_reason;
+                usage = data.usage;
                 
                 console.log('=== OpenRouter Response ===');
                 console.log('Finish reason:', finishReason);
@@ -2306,6 +2233,10 @@
                 this.debug(`Response received: ${assistantMessage.length} chars, finish: ${finishReason}`, 'success');
                 
             } catch (error) {
+                if (error.name === 'AbortError') {
+                    this.debug('Response was stopped by user', 'info');
+                    return;
+                }
                 const errorMessage = `[Error: ${error.message}]`;
                 const newMessage = {
                     role: 'assistant',
@@ -2325,7 +2256,9 @@
                 this.renderMessages();
                 
             } finally {
-                sendButton.disabled = false;
+                this.isResponding = false;
+                this.abortController = null;
+                this.updateSendButton();
                 typingIndicator.classList.remove('active');
             }
         }
@@ -2811,7 +2744,7 @@
             document.getElementById('duplicateChatBtn').addEventListener('click', () => this.duplicateCurrentChat());
             document.getElementById('exportChatBtn').addEventListener('click', () => this.exportCurrentChat());
             document.getElementById('importChatBtn').addEventListener('click', () => this.importCurrentChat());
-            document.getElementById('sendButton').addEventListener('click', () => this.sendMessage());
+            document.getElementById('sendButton').addEventListener('click', () => this.handleSendButton());
             
             const messageInput = document.getElementById('messageInput');
             messageInput.addEventListener('keydown', (e) => {
@@ -2890,6 +2823,35 @@
             
             const vh = window.innerHeight * 0.01;
             document.documentElement.style.setProperty('--vh', `${vh}px`);
+        }
+
+        handleSendButton() {
+            if (this.isResponding) {
+                this.stopResponse();
+            } else {
+                this.sendMessage();
+            }
+        }
+
+        stopResponse() {
+            if (this.abortController) {
+                this.abortController.abort();
+                this.isResponding = false;
+                this.updateSendButton();
+            }
+        }
+
+        updateSendButton() {
+            const sendButton = document.getElementById('sendButton');
+            if (this.isResponding) {
+                sendButton.textContent = '■';
+                sendButton.style.background = 'var(--danger)';
+                sendButton.disabled = false;
+            } else {
+                sendButton.textContent = '➤';
+                sendButton.style.background = 'var(--accent)';
+                sendButton.disabled = false;
+            }
         }
     }
 
