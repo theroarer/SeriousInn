@@ -434,10 +434,6 @@
             overflow: hidden;
             min-height: 0;
         }
-        
-        #app {
-            overflow-y: auto;
-        }
 
         #messages {
             flex: 1;
@@ -445,6 +441,7 @@
             padding: 16px;
             -webkit-overflow-scrolling: touch;
             padding-bottom: 8px;
+            scroll-padding-bottom: 100px;
         }
 
         .message {
@@ -647,6 +644,8 @@
             gap: 8px;
             align-items: flex-end;
             flex-shrink: 0;
+            position: relative;
+            z-index: 10;
         }
 
         #messageInput {
@@ -661,6 +660,11 @@
             max-height: 120px;
             resize: none;
             outline: none;
+            -webkit-user-select: text;
+            user-select: text;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            scroll-behavior: auto;
         }
 
         #messageInput:focus {
@@ -917,22 +921,6 @@
             left: 23px;
         }
 
-        .lorebook-delete-btn {
-            background: none;
-            border: 1px solid var(--border);
-            color: var(--text-secondary);
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 12px;
-            cursor: pointer;
-            transition: background 0.2s, color 0.2s;
-        }
-
-        .lorebook-delete-btn:active {
-            background: rgba(255, 68, 68, 0.1);
-            color: var(--danger);
-        }
-
         .lorebook-collapse-btn {
             background: none;
             border: 1px solid var(--border);
@@ -989,6 +977,15 @@
         .add-entry-btn:active {
             background: var(--bg-tertiary);
             color: var(--text-primary);
+        }
+
+        @supports (-webkit-touch-callout: none) {
+            #inputArea {
+                padding-bottom: calc(12px + var(--safe-bottom));
+            }
+            #messages {
+                scroll-padding-bottom: 100px;
+            }
         }
 
         @media (min-width: 768px) {
@@ -1349,8 +1346,8 @@
             this.abortController = null;
             this.isResponding = false;
             this.llmSettings = {
-                temperature: 0.7,
-                top_p: 0.9,
+                temperature: 0.5,
+                top_p: 1.0,
                 top_k: 0,
                 frequency_penalty: 0.0,
                 presence_penalty: 0.0,
@@ -1656,14 +1653,14 @@
                 return row;
             };
             
-            form.appendChild(createSlider('Temperature', 'temperature', 0, 2, 0.05));
-            form.appendChild(createSlider('Top P', 'top_p', 0, 1, 0.01));
-            form.appendChild(createNumberInput('Top K', 'top_k', 0, 250));
-            form.appendChild(createSlider('Frequency Penalty', 'frequency_penalty', -2, 2, 0.05));
-            form.appendChild(createSlider('Presence Penalty', 'presence_penalty', -2, 2, 0.05));
-            form.appendChild(createSlider('Repetition Penalty', 'repetition_penalty', 0.5, 2, 0.01));
-            form.appendChild(createSlider('Min P', 'min_p', 0, 1, 0.01));
-            form.appendChild(createSlider('Top A', 'top_a', 0, 1, 0.01));
+            form.appendChild(createSlider('Temperature', 'temperature', 0, 2, 0.1));
+            form.appendChild(createSlider('Top P', 'top_p', 0, 1, 0.05));
+            form.appendChild(createNumberInput('Top K', 'top_k', 0, 100));
+            form.appendChild(createSlider('Frequency Penalty', 'frequency_penalty', -2, 2, 0.1));
+            form.appendChild(createSlider('Presence Penalty', 'presence_penalty', -2, 2, 0.1));
+            form.appendChild(createSlider('Repetition Penalty', 'repetition_penalty', 0, 2, 0.1));
+            form.appendChild(createSlider('Min P', 'min_p', 0, 1, 0.05));
+            form.appendChild(createSlider('Top A', 'top_a', 0, 1, 0.05));
             form.appendChild(createNumberInput('Max Tokens', 'max_tokens', 1, 8192));
             
             const saveBtn = document.createElement('button');
@@ -1712,17 +1709,6 @@
                 titleSpan.className = 'lorebook-section-title';
                 titleSpan.textContent = `${lorebook.name} (${lorebook.entries.length} entries)`;
                 
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'lorebook-delete-btn';
-                deleteBtn.textContent = '✕';
-                deleteBtn.title = 'Delete lorebook';
-                deleteBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    if (confirm(`Delete lorebook "${lorebook.name}"? This cannot be undone.`)) {
-                        this.deleteLorebook(lorebook.id);
-                    }
-                });
-                
                 const collapseBtn = document.createElement('button');
                 collapseBtn.className = 'lorebook-collapse-btn';
                 collapseBtn.textContent = lorebook.collapsed ? '▶' : '▼';
@@ -1763,7 +1749,6 @@
                 actionsGroup.className = 'header-actions-group';
                 actionsGroup.appendChild(collapseBtn);
                 actionsGroup.appendChild(addEntryBtn);
-                actionsGroup.appendChild(deleteBtn);
                 
                 sectionHeader.appendChild(titleGroup);
                 sectionHeader.appendChild(actionsGroup);
@@ -2040,13 +2025,6 @@
             
             this.saveToStorage();
             this.renderChatList();
-        }
-
-        deleteLorebook(id) {
-            this.lorebooks = this.lorebooks.filter(lb => lb.id !== id);
-            this.saveToStorage();
-            this.renderLoreManagement();
-            this.debug('Lorebook deleted', 'info');
         }
 
         duplicateCurrentChat() {
@@ -2762,17 +2740,39 @@
 
         autoResizeInput() {
             const input = document.getElementById('messageInput');
-            const app = document.getElementById('app');
-            
             input.style.height = 'auto';
-            const maxHeight = window.innerHeight * 0.4;
-            input.style.height = Math.min(input.scrollHeight, maxHeight) + 'px';
+            const newHeight = Math.min(input.scrollHeight, 120);
+            input.style.height = newHeight + 'px';
             
-            // Force DOM reflow so scrollHeight is accurate
-            void input.offsetHeight;
+            // Critical for iOS: scroll caret into view after resize
+            this.scrollCaretIntoView();
+        }
+
+        scrollCaretIntoView() {
+            const input = document.getElementById('messageInput');
+            if (document.activeElement !== input) return;
             
-            // Scroll the app container so the input stays visible when it grows
-            app.scrollTop = app.scrollHeight;
+            try {
+                const textBeforeCaret = input.value.substring(0, input.selectionStart);
+                const caretLine = textBeforeCaret.split('\n').length;
+                
+                const computedStyle = getComputedStyle(input);
+                const lineHeight = parseFloat(computedStyle.lineHeight) || 20;
+                const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
+                
+                const caretY = paddingTop + (caretLine - 1) * lineHeight;
+                const visibleTop = input.scrollTop;
+                const visibleBottom = input.scrollTop + input.clientHeight;
+                
+                if (caretY + lineHeight > visibleBottom) {
+                    input.scrollTop = caretY + lineHeight - input.clientHeight;
+                } else if (caretY < visibleTop) {
+                    input.scrollTop = Math.max(0, caretY - lineHeight);
+                }
+            } catch (e) {
+                // Fallback: just scroll to bottom
+                input.scrollTop = input.scrollHeight;
+            }
         }
 
         bindEvents() {
@@ -2806,7 +2806,17 @@
                     this.autoResizeInput();
                 }
             });
-            messageInput.addEventListener('input', () => this.autoResizeInput());
+            messageInput.addEventListener('input', () => {
+                this.autoResizeInput();
+                this.scrollCaretIntoView();
+                const messagesContainer = document.getElementById('messages');
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            });
+            messageInput.addEventListener('keyup', () => this.scrollCaretIntoView());
+            messageInput.addEventListener('click', () => this.scrollCaretIntoView());
+            messageInput.addEventListener('focus', () => {
+                setTimeout(() => this.scrollCaretIntoView(), 300);
+            });
             
             document.getElementById('apiKeyInput').addEventListener('input', () => {
                 this.saveSettings();
@@ -2867,7 +2877,22 @@
             window.addEventListener('resize', () => {
                 const vh = window.innerHeight * 0.01;
                 document.documentElement.style.setProperty('--vh', `${vh}px`);
+                this.scrollCaretIntoView();
             });
+            
+            // iOS visual viewport handling for keyboard
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', () => {
+                    this.scrollCaretIntoView();
+                    const messagesContainer = document.getElementById('messages');
+                    if (messagesContainer) {
+                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                    }
+                });
+                window.visualViewport.addEventListener('scroll', () => {
+                    this.scrollCaretIntoView();
+                });
+            }
             
             const vh = window.innerHeight * 0.01;
             document.documentElement.style.setProperty('--vh', `${vh}px`);
