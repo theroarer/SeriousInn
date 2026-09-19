@@ -1102,13 +1102,11 @@
         static setItem(key, value) {
             console.log(`📝 StorageManager.setItem for key: ${key}`);
             
-            // Try localStorage first
             try {
                 const jsonData = JSON.stringify(value);
                 localStorage.setItem(key, jsonData);
                 console.log(`✓ Saved to localStorage: ${key}`);
                 
-                // Verify
                 const saved = localStorage.getItem(key);
                 if (saved) {
                     console.log(`✓ Verified localStorage save for ${key}`);
@@ -1118,7 +1116,6 @@
                 console.error(`✗ localStorage.setItem failed for ${key}:`, e);
             }
             
-            // Fallback to cookies
             try {
                 const jsonData = JSON.stringify(value);
                 document.cookie = `${key}=${encodeURIComponent(jsonData)}; max-age=31536000; path=/; SameSite=Lax`;
@@ -1128,7 +1125,6 @@
                 console.error(`✗ Cookie fallback failed for ${key}:`, cookieError);
             }
             
-            // Fallback to in-memory storage
             this.memoryStorage = this.memoryStorage || {};
             this.memoryStorage[key] = value;
             console.log(`✓ Fallback: saved to memory: ${key}`);
@@ -1138,7 +1134,6 @@
         static getItem(key) {
             console.log(`🔍 StorageManager.getItem for key: ${key}`);
             
-            // Try localStorage first
             try {
                 const data = localStorage.getItem(key);
                 if (data) {
@@ -1149,7 +1144,6 @@
                 console.error(`✗ localStorage.getItem failed for ${key}:`, e);
             }
             
-            // Try cookies
             try {
                 const cookies = document.cookie.split(';');
                 for (let cookie of cookies) {
@@ -1163,7 +1157,6 @@
                 console.error(`✗ Cookie getItem failed for ${key}:`, e);
             }
             
-            // Try in-memory storage
             if (this.memoryStorage && this.memoryStorage[key]) {
                 console.log(`✓ Retrieved from memory: ${key}`);
                 return this.memoryStorage[key];
@@ -1342,9 +1335,11 @@
             this.availableModels = [];
             this.selectedModel = null;
             this.lorebooks = [];
-            this.currentView = 'chat'; // 'chat', 'lore', or 'settings'
+            this.currentView = 'chat';
             this.abortController = null;
             this.isResponding = false;
+            this._resizeRaf = null;
+            this._pasteSettleTimer = null;
             this.llmSettings = {
                 temperature: 0.5,
                 top_p: 1.0,
@@ -1541,14 +1536,12 @@
         switchView(view) {
             this.currentView = view;
             
-            // Hide all views
             document.getElementById('chatArea').style.display = 'none';
             document.getElementById('loreManagementView').classList.remove('active');
             document.getElementById('loreManagementView').style.display = 'none';
             document.getElementById('settingsView').classList.remove('active');
             document.getElementById('settingsView').style.display = 'none';
             
-            // Show selected view
             if (view === 'chat') {
                 document.getElementById('chatArea').style.display = 'flex';
                 document.getElementById('viewToggleBtn').textContent = '📚 Lore Management';
@@ -1884,7 +1877,6 @@
             this.debug(`Added new entry to ${lorebook.name}`, 'info');
             this.renderLoreManagement();
             
-            // Open edit form for the new entry
             const container = document.getElementById('loreManagementView');
             const sections = container.querySelectorAll('.lorebook-section');
             for (const section of sections) {
@@ -2078,13 +2070,11 @@
                     try {
                         const chat = JSON.parse(event.target.result);
                         
-                        // Validate basic structure
                         if (!chat.messages || !Array.isArray(chat.messages)) {
                             alert('Invalid chat file: missing messages array');
                             return;
                         }
                         
-                        // Ensure required fields
                         chat.id = chat.id || this.generateId();
                         chat.name = chat.name || 'Imported Chat';
                         chat.messages = chat.messages.map(m => ({
@@ -2093,7 +2083,6 @@
                         }));
                         chat.created = chat.created || Date.now();
                         
-                        // Add to chats
                         this.chats.push(chat);
                         this.currentChatId = chat.id;
                         this.saveToStorage();
@@ -2208,7 +2197,6 @@
                 let finishReason = null;
                 let usage = null;
                 
-                // Handle non-streaming response
                 const responseText = await response.text();
                 let data;
                 try {
@@ -2237,7 +2225,6 @@
                 };
                 
                 if (retryChain) {
-                    // Add new content to chain
                     retryChain.versions.push(assistantMessage);
                     retryChain.currentVersion = retryChain.versions.length - 1;
                     newMessage.chainId = retryChain.index;
@@ -2261,7 +2248,6 @@
                 };
                 
                 if (retryChain) {
-                    // Add error to chain
                     retryChain.versions.push(errorMessage);
                     retryChain.currentVersion = retryChain.versions.length - 1;
                     newMessage.chainId = retryChain.index;
@@ -2388,7 +2374,6 @@
                 roleLabel.className = 'message-role';
                 roleLabel.textContent = message.role === 'user' ? 'You' : 'Assistant';
                 
-                // Get the actual content to display (from chain if available)
                 let displayContent = message.content;
                 let displayVersion = -1;
                 let displayTotal = 1;
@@ -2415,7 +2400,6 @@
                 actions.className = 'message-actions';
                 
                 if (message.role === 'assistant' && displayTotal > 1) {
-                    // Version navigation (if multiple versions exist)
                     const versionNav = document.createElement('div');
                     versionNav.className = 'version-nav';
                     
@@ -2486,30 +2470,22 @@
             const message = chat.messages[index];
             if (!message) return;
             
-            // Create or reuse a retry chain
             if (!chat.retryChains) chat.retryChains = [];
             
             let chain;
             if (message.chainId !== undefined && message.chainId !== null) {
-                // Reuse existing chain
                 chain = chat.retryChains[message.chainId];
             } else {
-                // Create new chain
                 chain = { versions: [], currentVersion: 0 };
                 message.chainId = chat.retryChains.length;
                 chat.retryChains.push(chain);
             }
             
-            // Store chain reference on the chain for easy access
             chain.index = message.chainId;
-            
-            // Add current content to chain (oldest first)
             chain.versions.push(message.content);
             
-            // Remove the assistant message being retried
             chat.messages.splice(index, 1);
             
-            // Find the last user message before this index
             let userMessageIndex = -1;
             for (let i = index - 1; i >= 0; i--) {
                 if (chat.messages[i].role === 'user') {
@@ -2522,7 +2498,6 @@
             
             const userMessage = chat.messages[userMessageIndex].content;
             
-            // Re-send the user message
             const apiKey = this.getApiKey();
             if (apiKey && this.selectedModel) {
                 await this.sendToOpenRouter(chat, apiKey, this.selectedModel, userMessage, chain);
@@ -2538,7 +2513,6 @@
             
             chain.currentVersion--;
             
-            // Update the message content to match the selected version
             const message = chat.messages.find(m => m.chainId === chainId && m.role === 'assistant');
             if (message) {
                 message.content = chain.versions[chain.currentVersion];
@@ -2556,7 +2530,6 @@
             
             chain.currentVersion++;
             
-            // Update the message content to match the selected version
             const message = chat.messages.find(m => m.chainId === chainId && m.role === 'assistant');
             if (message) {
                 message.content = chain.versions[chain.currentVersion];
@@ -2572,15 +2545,11 @@
             const message = chat.messages[index];
             if (!message) return;
             
-            // Find the content element by data attribute
             const messagesContainer = document.getElementById('messages');
             const messageElement = messagesContainer.querySelector(`[data-message-index="${index}"]`);
             const contentElement = messageElement?.querySelector('.message-content');
             
             if (!contentElement) return;
-            
-            // Replace content with edit form
-            const originalContent = contentElement.innerHTML;
             
             const form = document.createElement('div');
             form.className = 'message-edit-form';
@@ -2601,7 +2570,6 @@
                 if (newContent) {
                     message.content = newContent;
                     
-                    // If this message has a chain, update the current version in the chain
                     if (message.chainId !== undefined && message.chainId !== null) {
                         const chain = chat.retryChains[message.chainId];
                         if (chain) {
@@ -2652,7 +2620,6 @@
             const message = chat.messages[index];
             if (!message || message.role !== 'user') return;
             
-            // The user message is already in the history, just re-send it
             const userMessage = message.content;
             
             const apiKey = this.getApiKey();
@@ -2738,22 +2705,38 @@
             document.getElementById('sidebarOverlay').classList.remove('active');
         }
 
+        // Deferred resize: only touches style.height and scrollTop in the next frame,
+        // so iOS has finished its internal input/paste transaction before we mutate layout.
+        scheduleAutoResize() {
+            if (this._resizeRaf !== null) {
+                cancelAnimationFrame(this._resizeRaf);
+            }
+            this._resizeRaf = requestAnimationFrame(() => {
+                this._resizeRaf = null;
+                this.autoResizeInput();
+            });
+        }
+
         autoResizeInput() {
             const input = document.getElementById('messageInput');
+            if (!input) return;
+            
             input.style.height = 'auto';
             const newHeight = Math.min(input.scrollHeight, 120);
             input.style.height = newHeight + 'px';
             
-            // Critical for iOS: scroll caret into view after resize
             this.scrollCaretIntoView();
         }
 
         scrollCaretIntoView() {
             const input = document.getElementById('messageInput');
-            if (document.activeElement !== input) return;
+            if (!input || document.activeElement !== input) return;
             
             try {
-                const textBeforeCaret = input.value.substring(0, input.selectionStart);
+                const selStart = input.selectionStart;
+                if (selStart === null || selStart === undefined) return;
+                
+                const textBeforeCaret = input.value.substring(0, selStart);
                 const caretLine = textBeforeCaret.split('\n').length;
                 
                 const computedStyle = getComputedStyle(input);
@@ -2770,8 +2753,42 @@
                     input.scrollTop = Math.max(0, caretY - lineHeight);
                 }
             } catch (e) {
-                // Fallback: just scroll to bottom
                 input.scrollTop = input.scrollHeight;
+            }
+        }
+
+        // Called after paste settles. Restores caret to end of pasted content
+        // and forces the textarea to reconcile its internal state with the DOM value,
+        // which works around iOS's occasional selection reset after large pastes.
+        settleAfterPaste() {
+            const input = document.getElementById('messageInput');
+            if (!input) return;
+            
+            try {
+                input.focus({ preventScroll: true });
+                
+                const len = input.value.length;
+                
+                // If iOS zeroed the selection after paste, put caret at the end.
+                // If it set it somewhere valid, leave it alone.
+                if (input.selectionStart === 0 && input.selectionEnd === 0 && len > 0) {
+                    input.setSelectionRange(len, len);
+                }
+                
+                // Force layout reconciliation in case iOS left the field in a weird state
+                input.style.height = 'auto';
+                input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+                
+                // Only scroll the caret if it's actually out of view
+                this.scrollCaretIntoView();
+                
+                // Pin the messages list
+                const messagesContainer = document.getElementById('messages');
+                if (messagesContainer) {
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                }
+            } catch (e) {
+                console.warn('settleAfterPaste failed:', e);
             }
         }
 
@@ -2784,7 +2801,6 @@
             document.getElementById('sidebarOverlay').addEventListener('click', () => this.closeSidebar());
             document.getElementById('newChatBtn').addEventListener('click', () => this.createNewChat());
             
-            // View toggles
             document.getElementById('viewToggleBtn').addEventListener('click', () => this.toggleView());
             document.getElementById('settingsToggleBtn').addEventListener('click', () => this.toggleSettingsView());
             
@@ -2795,23 +2811,51 @@
             document.getElementById('sendButton').addEventListener('click', () => this.handleSendButton());
             
             const messageInput = document.getElementById('messageInput');
+            
             messageInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
-                    // Never send on Enter - insert newline instead
                     e.preventDefault();
                     const start = messageInput.selectionStart;
                     const end = messageInput.selectionEnd;
                     messageInput.value = messageInput.value.substring(0, start) + '\n' + messageInput.value.substring(end);
                     messageInput.selectionStart = messageInput.selectionEnd = start + 1;
-                    this.autoResizeInput();
+                    this.scheduleAutoResize();
                 }
             });
+            
+            // Input: do NOT mutate layout synchronously. Defer to next frame.
             messageInput.addEventListener('input', () => {
-                this.autoResizeInput();
-                this.scrollCaretIntoView();
+                this.scheduleAutoResize();
+                // Pin messages list separately, also deferred-ish but cheap
                 const messagesContainer = document.getElementById('messages');
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                if (messagesContainer) {
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                }
             });
+            
+            // Paste: let iOS finish its internal transaction before we touch anything.
+            // Also re-assert focus + selection after a short settle delay.
+            messageInput.addEventListener('paste', () => {
+                if (this._pasteSettleTimer !== null) {
+                    clearTimeout(this._pasteSettleTimer);
+                }
+                this._pasteSettleTimer = setTimeout(() => {
+                    this._pasteSettleTimer = null;
+                    this.settleAfterPaste();
+                }, 50);
+            });
+            
+            // Re-assert selection on composition end (IME / autocorrect / paste on some iOS versions)
+            messageInput.addEventListener('compositionend', () => {
+                if (this._pasteSettleTimer !== null) {
+                    clearTimeout(this._pasteSettleTimer);
+                }
+                this._pasteSettleTimer = setTimeout(() => {
+                    this._pasteSettleTimer = null;
+                    this.settleAfterPaste();
+                }, 50);
+            });
+            
             messageInput.addEventListener('keyup', () => this.scrollCaretIntoView());
             messageInput.addEventListener('click', () => this.scrollCaretIntoView());
             messageInput.addEventListener('focus', () => {
@@ -2837,19 +2881,16 @@
                 this.renderModelOptions(e.target.value);
             });
             
-            // Prevent clicks inside the dropdown from bubbling to the wrapper
             document.getElementById('modelDropdown').addEventListener('click', (e) => {
                 e.stopPropagation();
             });
             
-            // Close button handler
             document.getElementById('modelDropdownClose').addEventListener('click', () => {
                 document.getElementById('modelDropdown').classList.remove('active');
             });
             
             document.getElementById('testConnectionBtn').addEventListener('click', () => this.testConnection());
             
-            // Hidden file input for lorebook import
             const fileInput = document.createElement('input');
             fileInput.type = 'file';
             fileInput.accept = '.json';
@@ -2880,7 +2921,6 @@
                 this.scrollCaretIntoView();
             });
             
-            // iOS visual viewport handling for keyboard
             if (window.visualViewport) {
                 window.visualViewport.addEventListener('resize', () => {
                     this.scrollCaretIntoView();
