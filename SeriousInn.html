@@ -2768,6 +2768,9 @@
             const maxHeight = window.innerHeight * 0.4;
             input.style.height = Math.min(input.scrollHeight, maxHeight) + 'px';
             
+            // Force DOM reflow so scrollHeight is accurate
+            void input.offsetHeight;
+            
             // Scroll the app container so the input stays visible when it grows
             app.scrollTop = app.scrollHeight;
         }
