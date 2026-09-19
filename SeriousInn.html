@@ -2762,19 +2762,21 @@
             const maxHeight = window.innerHeight * 0.4;
             input.style.height = Math.min(input.scrollHeight, maxHeight) + 'px';
             
-            // iOS fix: keep the input visible when keyboard is open
-            const rect = input.getBoundingClientRect();
-            const viewportBottom = window.innerHeight;
-            
-            if (rect.bottom > viewportBottom - 20) {
-                input.scrollIntoView({ block: 'center', behavior: 'auto' });
+            // Defer scroll check to let iOS keyboard animation settle
+            setTimeout(() => {
+                const rect = input.getBoundingClientRect();
+                const viewportBottom = window.innerHeight;
                 
-                // iOS fallback: force viewport recalculation
-                if (input.getBoundingClientRect().bottom > viewportBottom - 20) {
-                    window.scrollBy({ top: 1, left: 0, behavior: 'auto' });
-                    window.scrollBy({ top: -1, left: 0, behavior: 'auto' });
+                if (rect.bottom > viewportBottom - 20) {
+                    input.scrollIntoView({ block: 'center', behavior: 'auto' });
+                    
+                    // iOS fallback: force viewport recalculation
+                    if (input.getBoundingClientRect().bottom > viewportBottom - 20) {
+                        window.scrollBy({ top: 1, left: 0, behavior: 'auto' });
+                        window.scrollBy({ top: -1, left: 0, behavior: 'auto' });
+                    }
                 }
-            }
+            }, 50);
         }
 
         bindEvents() {
