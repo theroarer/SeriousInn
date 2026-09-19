@@ -913,6 +913,22 @@
             left: 23px;
         }
 
+        .lorebook-delete-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .lorebook-delete-btn:active {
+            background: rgba(255, 68, 68, 0.1);
+            color: var(--danger);
+        }
+
         .lorebook-collapse-btn {
             background: none;
             border: 1px solid var(--border);
@@ -1329,8 +1345,8 @@
             this.abortController = null;
             this.isResponding = false;
             this.llmSettings = {
-                temperature: 0.5,
-                top_p: 1.0,
+                temperature: 0.7,
+                top_p: 0.9,
                 top_k: 0,
                 frequency_penalty: 0.0,
                 presence_penalty: 0.0,
@@ -1636,14 +1652,14 @@
                 return row;
             };
             
-            form.appendChild(createSlider('Temperature', 'temperature', 0, 2, 0.1));
-            form.appendChild(createSlider('Top P', 'top_p', 0, 1, 0.05));
-            form.appendChild(createNumberInput('Top K', 'top_k', 0, 100));
-            form.appendChild(createSlider('Frequency Penalty', 'frequency_penalty', -2, 2, 0.1));
-            form.appendChild(createSlider('Presence Penalty', 'presence_penalty', -2, 2, 0.1));
-            form.appendChild(createSlider('Repetition Penalty', 'repetition_penalty', 0, 2, 0.1));
-            form.appendChild(createSlider('Min P', 'min_p', 0, 1, 0.05));
-            form.appendChild(createSlider('Top A', 'top_a', 0, 1, 0.05));
+            form.appendChild(createSlider('Temperature', 'temperature', 0, 2, 0.05));
+            form.appendChild(createSlider('Top P', 'top_p', 0, 1, 0.01));
+            form.appendChild(createNumberInput('Top K', 'top_k', 0, 250));
+            form.appendChild(createSlider('Frequency Penalty', 'frequency_penalty', -2, 2, 0.05));
+            form.appendChild(createSlider('Presence Penalty', 'presence_penalty', -2, 2, 0.05));
+            form.appendChild(createSlider('Repetition Penalty', 'repetition_penalty', 0.5, 2, 0.01));
+            form.appendChild(createSlider('Min P', 'min_p', 0, 1, 0.01));
+            form.appendChild(createSlider('Top A', 'top_a', 0, 1, 0.01));
             form.appendChild(createNumberInput('Max Tokens', 'max_tokens', 1, 8192));
             
             const saveBtn = document.createElement('button');
@@ -1692,6 +1708,17 @@
                 titleSpan.className = 'lorebook-section-title';
                 titleSpan.textContent = `${lorebook.name} (${lorebook.entries.length} entries)`;
                 
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'lorebook-delete-btn';
+                deleteBtn.textContent = '✕';
+                deleteBtn.title = 'Delete lorebook';
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (confirm(`Delete lorebook "${lorebook.name}"? This cannot be undone.`)) {
+                        this.deleteLorebook(lorebook.id);
+                    }
+                });
+                
                 const collapseBtn = document.createElement('button');
                 collapseBtn.className = 'lorebook-collapse-btn';
                 collapseBtn.textContent = lorebook.collapsed ? '▶' : '▼';
@@ -1732,6 +1759,7 @@
                 actionsGroup.className = 'header-actions-group';
                 actionsGroup.appendChild(collapseBtn);
                 actionsGroup.appendChild(addEntryBtn);
+                actionsGroup.appendChild(deleteBtn);
                 
                 sectionHeader.appendChild(titleGroup);
                 sectionHeader.appendChild(actionsGroup);
@@ -2008,6 +2036,13 @@
             
             this.saveToStorage();
             this.renderChatList();
+        }
+
+        deleteLorebook(id) {
+            this.lorebooks = this.lorebooks.filter(lb => lb.id !== id);
+            this.saveToStorage();
+            this.renderLoreManagement();
+            this.debug('Lorebook deleted', 'info');
         }
 
         duplicateCurrentChat() {
@@ -2724,7 +2759,22 @@
         autoResizeInput() {
             const input = document.getElementById('messageInput');
             input.style.height = 'auto';
-            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+            const maxHeight = window.innerHeight * 0.4;
+            input.style.height = Math.min(input.scrollHeight, maxHeight) + 'px';
+            
+            // iOS fix: keep the input visible when keyboard is open
+            const rect = input.getBoundingClientRect();
+            const viewportBottom = window.innerHeight;
+            
+            if (rect.bottom > viewportBottom - 20) {
+                input.scrollIntoView({ block: 'center', behavior: 'auto' });
+                
+                // iOS fallback: force viewport recalculation
+                if (input.getBoundingClientRect().bottom > viewportBottom - 20) {
+                    window.scrollBy({ top: 1, left: 0, behavior: 'auto' });
+                    window.scrollBy({ top: -1, left: 0, behavior: 'auto' });
+                }
+            }
         }
 
         bindEvents() {
