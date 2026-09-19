@@ -1365,6 +1365,9 @@
             this.exportSettings = {
                 flatten: false
             };
+            this.uiSettings = {
+                maxInputLines: 5
+            };
             this.init();
         }
 
@@ -1377,6 +1380,7 @@
             this.loadFromStorage();
             this.loadLLMSettings();
             this.loadExportSettings();
+            this.loadUISettings();
             this.bindEvents();
             this.renderChatList();
             
@@ -1387,6 +1391,7 @@
             }
 
             this.loadSettings();
+            this.autoResizeInput();
             this.debug('App initialized', 'info');
             
             const apiKey = this.getApiKey();
@@ -1429,6 +1434,18 @@
         saveExportSettings() {
             StorageManager.setItem('export_settings', this.exportSettings);
             this.debug('Export settings saved', 'success');
+        }
+
+        loadUISettings() {
+            const saved = StorageManager.getItem('ui_settings');
+            if (saved && typeof saved === 'object') {
+                this.uiSettings = { ...this.uiSettings, ...saved };
+            }
+        }
+
+        saveUISettings() {
+            StorageManager.setItem('ui_settings', this.uiSettings);
+            this.debug('UI settings saved', 'success');
         }
 
         async loadLorebooks() {
@@ -1597,7 +1614,9 @@
             
             const settings = this.llmSettings;
             const exportSettings = this.exportSettings;
+            const uiSettings = this.uiSettings;
             
+            // --- LLM Parameters group ---
             const form = document.createElement('div');
             form.className = 'settings-group';
             
@@ -1678,6 +1697,55 @@
             
             container.appendChild(form);
             
+            // --- Chat Input group ---
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'settings-group';
+            
+            const inputTitle = document.createElement('h3');
+            inputTitle.textContent = 'Chat Input';
+            inputGroup.appendChild(inputTitle);
+            
+            const sliderRow = document.createElement('div');
+            sliderRow.className = 'setting-row';
+            
+            const sliderLabelRow = document.createElement('div');
+            sliderLabelRow.className = 'setting-label';
+            
+            const sliderLabel = document.createElement('span');
+            sliderLabel.textContent = 'Max input height';
+            
+            const sliderValue = document.createElement('span');
+            sliderValue.textContent = `${uiSettings.maxInputLines} lines`;
+            
+            sliderLabelRow.appendChild(sliderLabel);
+            sliderLabelRow.appendChild(sliderValue);
+            
+            const inputSlider = document.createElement('input');
+            inputSlider.type = 'range';
+            inputSlider.min = 3;
+            inputSlider.max = 20;
+            inputSlider.step = 1;
+            inputSlider.value = uiSettings.maxInputLines;
+            inputSlider.style.width = '100%';
+            inputSlider.addEventListener('input', () => {
+                uiSettings.maxInputLines = parseInt(inputSlider.value, 10);
+                sliderValue.textContent = `${uiSettings.maxInputLines} lines`;
+                // Apply live so the user sees the effect immediately
+                this.autoResizeInput();
+            });
+            
+            sliderRow.appendChild(sliderLabelRow);
+            sliderRow.appendChild(inputSlider);
+            inputGroup.appendChild(sliderRow);
+            
+            const sliderHelper = document.createElement('div');
+            sliderHelper.className = 'setting-helper';
+            sliderHelper.textContent = 'The message box grows as you type, up to this height. Larger values give you more room for longer messages on desktop.';
+            inputGroup.appendChild(sliderHelper);
+            
+            container.appendChild(inputGroup);
+            
+            // --- Export Format group ---
             const exportGroup = document.createElement('div');
             exportGroup.className = 'settings-group';
             
@@ -1721,12 +1789,14 @@
             
             container.appendChild(exportGroup);
             
+            // --- Shared save button ---
             const saveBtn = document.createElement('button');
             saveBtn.textContent = 'Save Settings';
             saveBtn.style.cssText = 'width: 100%; padding: 12px; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; min-height: 44px;';
             saveBtn.addEventListener('click', () => {
                 this.saveLLMSettings();
                 this.saveExportSettings();
+                this.saveUISettings();
                 alert('Settings saved!');
             });
             container.appendChild(saveBtn);
@@ -3221,11 +3291,25 @@
 
         autoResizeInput() {
             const input = document.getElementById('messageInput');
+            
+            // Compute the effective max height from the user's setting.
+            // Fall back to fontSize * 1.4 if lineHeight isn't a pixel value.
+            const computed = window.getComputedStyle(input);
+            let lineHeight = parseFloat(computed.lineHeight);
+            if (isNaN(lineHeight) || lineHeight <= 0) {
+                lineHeight = parseFloat(computed.fontSize) * 1.4;
+            }
+            
+            const settingMax = this.uiSettings.maxInputLines * lineHeight;
+            const viewportMax = window.innerHeight * 0.4;
+            const maxHeight = Math.min(settingMax, viewportMax);
+            
+            // Inline max-height overrides the CSS fallback so the setting is authoritative.
+            input.style.maxHeight = maxHeight + 'px';
 
             const prevScrollTop = input.scrollTop;
 
             input.style.height = 'auto';
-            const maxHeight = window.innerHeight * 0.4;
             const newHeight = Math.min(input.scrollHeight, maxHeight);
             input.style.height = newHeight + 'px';
 
@@ -3381,6 +3465,9 @@
             window.addEventListener('resize', () => {
                 const vh = window.innerHeight * 0.01;
                 document.documentElement.style.setProperty('--vh', `${vh}px`);
+                
+                // Keep the input height honest if the viewport shrink changes the 40vh cap
+                this.autoResizeInput();
                 
                 clearTimeout(this._dropdownRepositionTimer);
                 this._dropdownRepositionTimer = setTimeout(() => {
