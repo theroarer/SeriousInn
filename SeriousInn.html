@@ -434,6 +434,10 @@
             overflow: hidden;
             min-height: 0;
         }
+        
+        #app {
+            overflow-y: auto;
+        }
 
         #messages {
             flex: 1;
@@ -2758,19 +2762,14 @@
 
         autoResizeInput() {
             const input = document.getElementById('messageInput');
+            const app = document.getElementById('app');
+            
             input.style.height = 'auto';
             const maxHeight = window.innerHeight * 0.4;
             input.style.height = Math.min(input.scrollHeight, maxHeight) + 'px';
             
-            // iOS fix: use requestAnimationFrame to let the browser settle,
-            // then scroll the input into view so the cursor stays visible.
-            requestAnimationFrame(() => {
-                input.scrollIntoView({ block: 'center', behavior: 'auto' });
-                
-                // iOS fallback: force viewport recalculation
-                window.scrollBy({ top: 1, left: 0, behavior: 'auto' });
-                window.scrollBy({ top: -1, left: 0, behavior: 'auto' });
-            });
+            // Scroll the app container so the input stays visible when it grows
+            app.scrollTop = app.scrollHeight;
         }
 
         bindEvents() {
