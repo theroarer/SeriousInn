@@ -1,2 +1,2 @@
 # SeriousInn
-SillyTavern-ish LLM Frontend
+SillyTavern-ish LLM Web-based Frontend
