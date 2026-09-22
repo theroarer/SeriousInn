@@ -586,6 +586,8 @@
         .message-edit-textarea {
             width: 100%;
             min-height: 150px;
+            max-height: 60vh;
+            max-height: 60dvh;
             padding: 10px;
             background: var(--bg-primary);
             border: 1px solid var(--border);
@@ -595,6 +597,8 @@
             font-family: inherit;
             line-height: 1.5;
             resize: vertical;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
 
         .message-edit-textarea:focus {
@@ -2164,7 +2168,6 @@
             const container = document.getElementById('loreManagementView');
             container.innerHTML = '';
             
-            // Top bar: New + Import + ⋮
             const topBar = document.createElement('div');
             topBar.style.cssText = 'display: flex; gap: 8px; margin-bottom: 16px;';
             
@@ -3392,6 +3395,31 @@
             form.appendChild(actionsDiv);
             contentElement.innerHTML = '';
             contentElement.appendChild(form);
+            
+            // Auto-size the textarea to fit its content (capped at 60% viewport height)
+            // synchronously so there's no flash of an undersized form.
+            textarea.style.height = 'auto';
+            const maxHeight = window.innerHeight * 0.6;
+            textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
+            
+            // On the next frame (layout settled), scroll the messages container
+            // so the form's top edge is comfortably visible.
+            requestAnimationFrame(() => {
+                if (!document.body.contains(form)) return;
+                const formRect = form.getBoundingClientRect();
+                const containerRect = messagesContainer.getBoundingClientRect();
+                const currentTopInViewport = formRect.top - containerRect.top;
+                const desiredTop = 70;
+                
+                // Only scroll if the form's top is above where we want it —
+                // if the user already has the form comfortably in view, don't
+                // yank their scroll position.
+                if (currentTopInViewport < desiredTop) {
+                    const formTopInScrollSpace = formRect.top - containerRect.top + messagesContainer.scrollTop;
+                    const targetScroll = Math.max(0, formTopInScrollSpace - desiredTop);
+                    messagesContainer.scrollTop = targetScroll;
+                }
+            });
         }
 
         deleteMessage(index) {
