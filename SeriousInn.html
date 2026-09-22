@@ -20,8 +20,6 @@
             --sidebar-width: 280px;
             --safe-top: env(safe-area-inset-top, 0px);
             --safe-bottom: env(safe-area-inset-bottom, 0px);
-            --safe-left: env(safe-area-inset-left, 0px);
-            --safe-right: env(safe-area-inset-right, 0px);
         }
 
         * {
@@ -1119,7 +1117,6 @@
             color: var(--text-primary);
         }
 
-        /* ===== Modal ===== */
         .modal-overlay {
             position: fixed;
             inset: 0;
@@ -1279,7 +1276,6 @@
             cursor: not-allowed;
         }
 
-        /* Message picker list */
         .message-list {
             flex: 1 1 auto;
             min-height: 0;
@@ -1338,7 +1334,6 @@
             overflow: hidden;
         }
 
-        /* Preset buttons */
         .preset-row {
             display: flex;
             gap: 8px;
@@ -1405,7 +1400,6 @@
             line-height: 1.4;
         }
 
-        /* Bottom sheet */
         .bottom-sheet-overlay {
             position: fixed;
             inset: 0;
@@ -1554,16 +1548,12 @@
                 const jsonData = JSON.stringify(value);
                 localStorage.setItem(key, jsonData);
                 return true;
-            } catch (e) {
-                console.error(`localStorage.setItem failed for ${key}:`, e);
-            }
+            } catch (e) {}
             try {
                 const jsonData = JSON.stringify(value);
                 document.cookie = `${key}=${encodeURIComponent(jsonData)}; max-age=31536000; path=/; SameSite=Lax`;
                 return true;
-            } catch (cookieError) {
-                console.error(`Cookie fallback failed for ${key}:`, cookieError);
-            }
+            } catch (cookieError) {}
             this.memoryStorage = this.memoryStorage || {};
             this.memoryStorage[key] = value;
             return true;
@@ -1573,9 +1563,7 @@
             try {
                 const data = localStorage.getItem(key);
                 if (data) return JSON.parse(data);
-            } catch (e) {
-                console.error(`localStorage.getItem failed for ${key}:`, e);
-            }
+            } catch (e) {}
             try {
                 const cookies = document.cookie.split(';');
                 for (let cookie of cookies) {
@@ -1584,12 +1572,8 @@
                         return JSON.parse(decodeURIComponent(cookieValue));
                     }
                 }
-            } catch (e) {
-                console.error(`Cookie getItem failed for ${key}:`, e);
-            }
-            if (this.memoryStorage && this.memoryStorage[key]) {
-                return this.memoryStorage[key];
-            }
+            } catch (e) {}
+            if (this.memoryStorage && this.memoryStorage[key]) return this.memoryStorage[key];
             return null;
         }
 
@@ -1780,6 +1764,24 @@
         async loadLorebooks() {
             try { this.lorebooks = await LorebookStorage.getAllLorebooks(); }
             catch (e) { this.lorebooks = []; }
+        }
+
+        async createLorebook() {
+            const name = prompt('New lorebook name:');
+            if (name === null) return;
+            const trimmed = name.trim();
+            if (!trimmed) return;
+            
+            const lorebook = {
+                id: this.generateId(),
+                name: trimmed,
+                entries: [],
+                imported: Date.now()
+            };
+            
+            await LorebookStorage.saveLorebook(lorebook);
+            this.lorebooks.push(lorebook);
+            this.renderLoreManagement();
         }
 
         async importLorebook(file) {
@@ -2162,29 +2164,42 @@
             const container = document.getElementById('loreManagementView');
             container.innerHTML = '';
             
+            // Top bar: New + Import + ⋮
             const topBar = document.createElement('div');
             topBar.style.cssText = 'display: flex; gap: 8px; margin-bottom: 16px;';
             
+            const newLbBtn = document.createElement('button');
+            newLbBtn.className = 'sidebar-action-btn';
+            newLbBtn.textContent = '➕ New';
+            newLbBtn.style.cssText = 'flex: 1; text-align: center; padding-left: 10px;';
+            newLbBtn.addEventListener('click', () => this.createLorebook());
+            topBar.appendChild(newLbBtn);
+            
             const importBtn = document.createElement('button');
             importBtn.className = 'sidebar-action-btn';
-            importBtn.textContent = '📚 Import Lorebook';
+            importBtn.textContent = '📚 Import';
             importBtn.style.cssText = 'flex: 1; text-align: center; padding-left: 10px;';
             importBtn.addEventListener('click', () => {
                 document.getElementById('lorebookFileInput').click();
             });
             topBar.appendChild(importBtn);
             
-            const exportAllBtn = document.createElement('button');
-            exportAllBtn.className = 'sidebar-action-btn';
-            exportAllBtn.textContent = '⬇️ Export All';
-            exportAllBtn.style.cssText = 'flex: 1; text-align: center; padding-left: 10px;';
-            if (this.lorebooks.length === 0) {
-                exportAllBtn.disabled = true;
-                exportAllBtn.style.opacity = '0.4';
-                exportAllBtn.style.cursor = 'not-allowed';
-            }
-            exportAllBtn.addEventListener('click', () => this.exportAllLorebooks());
-            topBar.appendChild(exportAllBtn);
+            const menuBtn = document.createElement('button');
+            menuBtn.className = 'sidebar-action-btn';
+            menuBtn.textContent = '⋮';
+            menuBtn.title = 'More options';
+            menuBtn.style.cssText = 'flex: 0 0 52px; text-align: center; padding-left: 0; font-size: 18px;';
+            menuBtn.addEventListener('click', () => {
+                this.showBottomSheet([
+                    {
+                        label: '⬇️ Export All Lorebooks',
+                        disabled: this.lorebooks.length === 0,
+                        action: () => this.exportAllLorebooks()
+                    }
+                ]);
+            });
+            topBar.appendChild(menuBtn);
+            
             container.appendChild(topBar);
             
             const chat = this.chats.find(c => c.id === this.currentChatId);
@@ -2192,7 +2207,7 @@
             if (this.lorebooks.length === 0) {
                 const emptyMsg = document.createElement('div');
                 emptyMsg.style.cssText = 'color: var(--text-secondary); text-align: center; padding: 40px 0; white-space: pre-line;';
-                emptyMsg.textContent = 'No lorebooks imported yet.\nUse the Import button above to load one.';
+                emptyMsg.textContent = 'No lorebooks yet.\nTap "➕ New" to create one, or "📚 Import" to load a file.';
                 container.appendChild(emptyMsg);
                 return;
             }
@@ -2208,29 +2223,10 @@
                 titleSpan.className = 'lorebook-section-title';
                 titleSpan.textContent = `${lorebook.name} (${lorebook.entries.length})`;
                 
-                const exportBtn = document.createElement('button');
-                exportBtn.className = 'lorebook-export-btn';
-                exportBtn.textContent = '⬇';
-                exportBtn.title = 'Export';
-                exportBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this.exportLorebook(lorebook);
-                });
-                
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'lorebook-delete-btn';
-                deleteBtn.textContent = '✕';
-                deleteBtn.title = 'Delete';
-                deleteBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    if (confirm(`Delete lorebook "${lorebook.name}"? This cannot be undone.`)) {
-                        this.deleteLorebook(lorebook.id);
-                    }
-                });
-                
                 const collapseBtn = document.createElement('button');
                 collapseBtn.className = 'lorebook-collapse-btn';
                 collapseBtn.textContent = lorebook.collapsed ? '▶' : '▼';
+                collapseBtn.title = lorebook.collapsed ? 'Expand' : 'Collapse';
                 collapseBtn.addEventListener('click', () => {
                     lorebook.collapsed = !lorebook.collapsed;
                     this.renderLoreManagement();
@@ -2245,11 +2241,14 @@
                 toggle.appendChild(knob);
                 toggle.addEventListener('click', () => this.toggleLorebookForCurrentChat(lorebook.id));
                 
-                const addEntryBtn = document.createElement('button');
-                addEntryBtn.className = 'add-entry-btn';
-                addEntryBtn.textContent = '+';
-                addEntryBtn.title = 'Add entry';
-                addEntryBtn.addEventListener('click', () => this.addEntry(lorebook));
+                const lbMenuBtn = document.createElement('button');
+                lbMenuBtn.className = 'entry-menu-btn';
+                lbMenuBtn.textContent = '⋮';
+                lbMenuBtn.title = 'Lorebook options';
+                lbMenuBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this._openLorebookMenu(lorebook);
+                });
                 
                 const titleGroup = document.createElement('div');
                 titleGroup.className = 'header-title-group';
@@ -2259,9 +2258,7 @@
                 const actionsGroup = document.createElement('div');
                 actionsGroup.className = 'header-actions-group';
                 actionsGroup.appendChild(collapseBtn);
-                actionsGroup.appendChild(addEntryBtn);
-                actionsGroup.appendChild(exportBtn);
-                actionsGroup.appendChild(deleteBtn);
+                actionsGroup.appendChild(lbMenuBtn);
                 
                 sectionHeader.appendChild(titleGroup);
                 sectionHeader.appendChild(actionsGroup);
@@ -2340,6 +2337,19 @@
                 section.appendChild(entriesContainer);
                 container.appendChild(section);
             });
+        }
+
+        _openLorebookMenu(lorebook) {
+            const items = [
+                { label: '➕ Add entry', action: () => this.addEntry(lorebook) },
+                { label: '⬇️ Export lorebook', action: () => this.exportLorebook(lorebook) },
+                { label: '🗑️ Delete lorebook', danger: true, action: () => {
+                    if (confirm(`Delete lorebook "${lorebook.name}"? This cannot be undone.`)) {
+                        this.deleteLorebook(lorebook.id);
+                    }
+                }}
+            ];
+            this.showBottomSheet(items);
         }
 
         _openEntryMenu(lorebook, entryIndex, entryDiv) {
@@ -2968,7 +2978,6 @@
             
             this.renderMessages({ forceScroll: true });
             let accumulated = '';
-            let finishReason = null;
             
             try {
                 const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -3019,7 +3028,6 @@
                         if (parsed.error) throw new Error(parsed.error.message || 'Stream error');
                         const choice = parsed.choices && parsed.choices[0];
                         if (!choice) continue;
-                        if (choice.finish_reason) finishReason = choice.finish_reason;
                         const delta = choice.delta && choice.delta.content;
                         if (delta) {
                             accumulated += delta;
@@ -3498,8 +3506,6 @@
             document.getElementById('sidebarOverlay').classList.remove('active');
         }
 
-        // ============ SUMMARIZE RANGE ============
-
         openSummarizeModal(chatId) {
             const chat = this.chats.find(c => c.id === chatId);
             if (!chat) return;
@@ -3544,7 +3550,6 @@
             const chat = this.chats.find(c => c.id === state.chatId);
             if (!chat) return;
             
-            // Refs from previous picker are dead now that we're rebuilding
             state.pickerRefs = null;
             
             let overlay = document.getElementById('summarizeModal');
@@ -4252,8 +4257,6 @@ ${transcript}
             const picker = document.getElementById('savePicker');
             if (picker) picker.classList.remove('active');
         }
-
-        // ============ END SUMMARIZE ============
 
         autoResizeInput() {
             const input = document.getElementById('messageInput');
