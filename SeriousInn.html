@@ -1712,6 +1712,7 @@
             this._streamRenderScheduled = false;
             this._streamRenderTimer = null;
             this._dropdownRepositionTimer = null;
+            this._scrollSaveTimer = null;
             this._summarizeState = null;
             this.llmSettings = {
                 temperature: 0.7, top_p: 0.9, top_k: 0,
@@ -1734,8 +1735,17 @@
             this.bindEvents();
             this.renderChatList();
             
-            if (this.chats.length === 0) this.createNewChat();
-            else this.switchToChat(this.chats[0].id);
+            // Restore last active chat, falling back to first chat
+            const lastChatId = StorageManager.getItem('roleplay_last_chat_id');
+            const lastChat = lastChatId && this.chats.find(c => c.id === lastChatId);
+            
+            if (this.chats.length === 0) {
+                this.createNewChat();
+            } else if (lastChat) {
+                this.switchToChat(lastChat.id);
+            } else {
+                this.switchToChat(this.chats[0].id);
+            }
 
             this.loadSettings();
             this.autoResizeInput();
@@ -1764,6 +1774,62 @@
             if (saved && typeof saved === 'object') this.uiSettings = { ...this.uiSettings, ...saved };
         }
         saveUISettings() { StorageManager.setItem('ui_settings', this.uiSettings); }
+
+        // ============ Scroll & active-chat persistence ============
+
+        saveLastChatId(chatId) {
+            if (chatId) StorageManager.setItem('roleplay_last_chat_id', chatId);
+            else StorageManager.removeItem('roleplay_last_chat_id');
+        }
+
+        _scheduleScrollSave() {
+            if (this._scrollSaveTimer) clearTimeout(this._scrollSaveTimer);
+            this._scrollSaveTimer = setTimeout(() => {
+                this._scrollSaveTimer = null;
+                this._saveScrollPosition();
+            }, 500);
+        }
+
+        _saveScrollPosition() {
+            if (!this.currentChatId) return;
+            const container = document.getElementById('messages');
+            if (!container) return;
+            const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+            const positions = StorageManager.getItem('roleplay_chat_scroll') || {};
+            positions[this.currentChatId] = {
+                scrollTop: container.scrollTop,
+                atBottom
+            };
+            StorageManager.setItem('roleplay_chat_scroll', positions);
+        }
+
+        _restoreScrollPosition(chatId) {
+            const container = document.getElementById('messages');
+            if (!container) return;
+            const positions = StorageManager.getItem('roleplay_chat_scroll') || {};
+            const saved = positions[chatId];
+            
+            if (!saved) {
+                container.scrollTop = container.scrollHeight;
+                return;
+            }
+            if (saved.atBottom) {
+                container.scrollTop = container.scrollHeight;
+            } else {
+                const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+                container.scrollTop = Math.min(saved.scrollTop, maxScroll);
+            }
+        }
+
+        _clearScrollPosition(chatId) {
+            const positions = StorageManager.getItem('roleplay_chat_scroll') || {};
+            if (positions[chatId]) {
+                delete positions[chatId];
+                StorageManager.setItem('roleplay_chat_scroll', positions);
+            }
+        }
+
+        // ============ End scroll persistence ============
 
         async loadLorebooks() {
             try { this.lorebooks = await LorebookStorage.getAllLorebooks(); }
@@ -2616,6 +2682,7 @@
             };
             this.chats.unshift(newChat);
             this.currentChatId = newChat.id;
+            this.saveLastChatId(newChat.id);
             this.saveToStorage();
             this.renderChatList();
             this.renderMessages({ forceScroll: true });
@@ -2630,11 +2697,23 @@
         switchToChat(chatId) {
             const chat = this.chats.find(c => c.id === chatId);
             if (!chat) return;
+            
+            // Flush any pending scroll save for the previous chat before switching
+            if (this._scrollSaveTimer) {
+                clearTimeout(this._scrollSaveTimer);
+                this._scrollSaveTimer = null;
+                this._saveScrollPosition();
+            }
+            
             this.currentChatId = chatId;
+            this.saveLastChatId(chatId);
+            
             if (this.currentView === 'chat') {
                 this.renderMessages({ forceScroll: true });
+                this._restoreScrollPosition(chatId);
                 this.updateChatTitle();
             }
+            
             this.renderChatList();
             this.closeSidebar();
         }
@@ -2644,9 +2723,14 @@
             const chat = this.chats.find(c => c.id === this.currentChatId);
             if (!chat) return;
             if (!confirm(`Delete chat "${chat.name}"?`)) return;
-            this.chats = this.chats.filter(c => c.id !== this.currentChatId);
+            
+            const deletedId = this.currentChatId;
+            this.chats = this.chats.filter(c => c.id !== deletedId);
+            this._clearScrollPosition(deletedId);
+            
             if (this.chats.length === 0) {
                 this.currentChatId = null;
+                this.saveLastChatId(null);
                 this.renderMessages();
                 this.updateChatTitle();
             } else {
@@ -2675,6 +2759,7 @@
             };
             this.chats.unshift(newChat);
             this.currentChatId = newChat.id;
+            this.saveLastChatId(newChat.id);
             this.saveToStorage();
             this.renderChatList();
             this.renderMessages({ forceScroll: true });
@@ -2823,6 +2908,7 @@
                         );
                         this.chats.push(chat);
                         this.currentChatId = chat.id;
+                        this.saveLastChatId(chat.id);
                         this.saveToStorage();
                         this.renderChatList();
                         this.switchToChat(chat.id);
@@ -3396,14 +3482,10 @@
             contentElement.innerHTML = '';
             contentElement.appendChild(form);
             
-            // Auto-size the textarea to fit its content (capped at 60% viewport height)
-            // synchronously so there's no flash of an undersized form.
             textarea.style.height = 'auto';
             const maxHeight = window.innerHeight * 0.6;
             textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
             
-            // On the next frame (layout settled), scroll the messages container
-            // so the form's top edge is comfortably visible.
             requestAnimationFrame(() => {
                 if (!document.body.contains(form)) return;
                 const formRect = form.getBoundingClientRect();
@@ -3411,9 +3493,6 @@
                 const currentTopInViewport = formRect.top - containerRect.top;
                 const desiredTop = 70;
                 
-                // Only scroll if the form's top is above where we want it —
-                // if the user already has the form comfortably in view, don't
-                // yank their scroll position.
                 if (currentTopInViewport < desiredTop) {
                     const formTopInScrollSpace = formRect.top - containerRect.top + messagesContainer.scrollTop;
                     const targetScroll = Math.max(0, formTopInScrollSpace - desiredTop);
@@ -4375,6 +4454,23 @@ ${transcript}
                 }
             });
             messageInput.addEventListener('input', () => this.autoResizeInput());
+            
+            // Scroll position tracking — save the current chat's scroll position
+            // on scroll-end (debounced) and flush immediately when the tab is hidden.
+            const messagesContainer = document.getElementById('messages');
+            messagesContainer.addEventListener('scroll', () => {
+                this._scheduleScrollSave();
+            }, { passive: true });
+            
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    if (this._scrollSaveTimer) {
+                        clearTimeout(this._scrollSaveTimer);
+                        this._scrollSaveTimer = null;
+                    }
+                    this._saveScrollPosition();
+                }
+            });
             
             document.getElementById('apiKeyInput').addEventListener('input', () => {
                 this.saveSettings();
