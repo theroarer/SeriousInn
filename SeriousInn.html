@@ -831,6 +831,10 @@
             gap: 8px;
         }
 
+        .lorebook-entry.collapsed .lorebook-entry-header {
+            margin-bottom: 0;
+        }
+
         .entry-title-group {
             display: flex;
             align-items: center;
@@ -846,6 +850,21 @@
             flex-shrink: 0;
         }
 
+        .entry-chevron {
+            font-size: 9px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+            cursor: pointer;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            min-height: 20px;
+        }
+
         .lorebook-entry-name {
             font-size: 14px;
             font-weight: 600;
@@ -855,6 +874,9 @@
             white-space: nowrap;
             min-width: 0;
             cursor: pointer;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
             flex-shrink: 1;
         }
 
@@ -1735,7 +1757,6 @@
             this.bindEvents();
             this.renderChatList();
             
-            // Restore last active chat, falling back to first chat
             const lastChatId = StorageManager.getItem('roleplay_last_chat_id');
             const lastChat = lastChatId && this.chats.find(c => c.id === lastChatId);
             
@@ -1774,8 +1795,6 @@
             if (saved && typeof saved === 'object') this.uiSettings = { ...this.uiSettings, ...saved };
         }
         saveUISettings() { StorageManager.setItem('ui_settings', this.uiSettings); }
-
-        // ============ Scroll & active-chat persistence ============
 
         saveLastChatId(chatId) {
             if (chatId) StorageManager.setItem('roleplay_last_chat_id', chatId);
@@ -1828,8 +1847,6 @@
                 StorageManager.setItem('roleplay_chat_scroll', positions);
             }
         }
-
-        // ============ End scroll persistence ============
 
         async loadLorebooks() {
             try { this.lorebooks = await LorebookStorage.getAllLorebooks(); }
@@ -1895,7 +1912,8 @@
                 content: entry.content || '',
                 order: typeof entry.order === 'number' ? entry.order : 100,
                 disabled: entry.disable === true || entry.disabled === true,
-                constant: entry.constant === true
+                constant: entry.constant === true,
+                collapsed: false
             }));
             
             const lorebook = {
@@ -2342,6 +2360,7 @@
                 lorebook.entries.forEach((entry, entryIndex) => {
                     const entryDiv = document.createElement('div');
                     entryDiv.className = 'lorebook-entry';
+                    if (entry.collapsed === true) entryDiv.classList.add('collapsed');
                     
                     const entryHeader = document.createElement('div');
                     entryHeader.className = 'lorebook-entry-header';
@@ -2349,13 +2368,30 @@
                     const titleGroupEl = document.createElement('div');
                     titleGroupEl.className = 'entry-title-group';
                     
+                    const chevron = document.createElement('span');
+                    chevron.className = 'entry-chevron';
+                    chevron.textContent = entry.collapsed === true ? '▶' : '▼';
+                    titleGroupEl.appendChild(chevron);
+                    
                     const nameSpan = document.createElement('span');
                     nameSpan.className = 'lorebook-entry-name';
                     nameSpan.textContent = entry.comment;
-                    nameSpan.addEventListener('click', () => {
-                        this.editEntry(lorebook, entry, entryDiv);
-                    });
                     titleGroupEl.appendChild(nameSpan);
+                    
+                    const toggleCollapse = () => {
+                        const loreView = document.getElementById('loreManagementView');
+                        const scrollTop = loreView.scrollTop;
+                        entry.collapsed = entry.collapsed === true ? false : true;
+                        LorebookStorage.saveLorebook(lorebook);
+                        this.renderLoreManagement();
+                        loreView.scrollTop = scrollTop;
+                    };
+                    
+                    chevron.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        toggleCollapse();
+                    });
+                    nameSpan.addEventListener('click', toggleCollapse);
                     
                     if (entry.constant === true) {
                         const badge = document.createElement('span');
@@ -2385,20 +2421,22 @@
                     entryHeader.appendChild(menuBtn);
                     entryDiv.appendChild(entryHeader);
                     
-                    const keysDiv = document.createElement('div');
-                    keysDiv.className = 'lorebook-entry-keys';
-                    if (entry.constant === true) {
-                        keysDiv.textContent = 'Keys: (always on — fires every turn)';
-                        keysDiv.style.fontStyle = 'italic';
-                    } else {
-                        keysDiv.textContent = `Keys: ${(entry.keys || []).join(', ')}`;
+                    if (entry.collapsed !== true) {
+                        const keysDiv = document.createElement('div');
+                        keysDiv.className = 'lorebook-entry-keys';
+                        if (entry.constant === true) {
+                            keysDiv.textContent = 'Keys: (always on — fires every turn)';
+                            keysDiv.style.fontStyle = 'italic';
+                        } else {
+                            keysDiv.textContent = `Keys: ${(entry.keys || []).join(', ')}`;
+                        }
+                        entryDiv.appendChild(keysDiv);
+                        
+                        const contentDiv = document.createElement('div');
+                        contentDiv.className = 'lorebook-entry-content';
+                        contentDiv.textContent = entry.content;
+                        entryDiv.appendChild(contentDiv);
                     }
-                    entryDiv.appendChild(keysDiv);
-                    
-                    const contentDiv = document.createElement('div');
-                    contentDiv.className = 'lorebook-entry-content';
-                    contentDiv.textContent = entry.content;
-                    entryDiv.appendChild(contentDiv);
                     
                     entriesContainer.appendChild(entryDiv);
                 });
@@ -2504,6 +2542,7 @@
 
         editEntry(lorebook, entry, entryDiv) {
             entryDiv.innerHTML = '';
+            entryDiv.classList.remove('collapsed');
             
             const form = document.createElement('div');
             form.className = 'edit-form';
@@ -2599,7 +2638,8 @@
                 content: '',
                 order: 100,
                 disabled: false,
-                constant: false
+                constant: false,
+                collapsed: false
             };
             lorebook.entries.push(newEntry);
             this.renderLoreManagement();
@@ -2698,7 +2738,6 @@
             const chat = this.chats.find(c => c.id === chatId);
             if (!chat) return;
             
-            // Flush any pending scroll save for the previous chat before switching
             if (this._scrollSaveTimer) {
                 clearTimeout(this._scrollSaveTimer);
                 this._scrollSaveTimer = null;
@@ -4344,7 +4383,8 @@ ${transcript}
                     content: state.summary,
                     order: 100,
                     disabled: false,
-                    constant: false
+                    constant: false,
+                    collapsed: false
                 };
                 targetLb.entries.push(newEntry);
                 await LorebookStorage.saveLorebook(targetLb);
@@ -4455,8 +4495,6 @@ ${transcript}
             });
             messageInput.addEventListener('input', () => this.autoResizeInput());
             
-            // Scroll position tracking — save the current chat's scroll position
-            // on scroll-end (debounced) and flush immediately when the tab is hidden.
             const messagesContainer = document.getElementById('messages');
             messagesContainer.addEventListener('scroll', () => {
                 this._scheduleScrollSave();
