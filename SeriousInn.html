@@ -2285,7 +2285,7 @@
             const gistDisplay = document.createElement('input');
             gistDisplay.type = 'text';
             gistDisplay.className = 'setting-input';
-            gistDisplay.readOnly = true;
+            gistDisplay.readOnly = false;
             gistDisplay.value = this.getCloudGistId() || '(auto-created on first export)';
             gistRow.appendChild(gistLabel);
             gistRow.appendChild(gistDisplay);
