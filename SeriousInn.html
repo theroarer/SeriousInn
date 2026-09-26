@@ -2285,8 +2285,16 @@
             const gistDisplay = document.createElement('input');
             gistDisplay.type = 'text';
             gistDisplay.className = 'setting-input';
-            gistDisplay.readOnly = false;
-            gistDisplay.value = this.getCloudGistId() || '(auto-created on first export)';
+            gistDisplay.value = this.getCloudGistId() || '';
+            gistDisplay.placeholder = '(auto-created on first export)';
+            const saveGistId = () => {
+                const val = gistDisplay.value.trim();
+                if (val) StorageManager.setItem('cloud_gist_id', val);
+                else StorageManager.removeItem('cloud_gist_id');
+            };
+            gistDisplay.addEventListener('input', saveGistId);
+            gistDisplay.addEventListener('change', saveGistId);
+            gistDisplay.addEventListener('blur', saveGistId);
             gistRow.appendChild(gistLabel);
             gistRow.appendChild(gistDisplay);
             cloudGroup.appendChild(gistRow);
