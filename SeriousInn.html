@@ -3079,12 +3079,26 @@
 
             let gistId = this.getCloudGistId();
             if (gistId) {
+                let check;
                 try {
-                    const check = await fetch(`https://api.github.com/gists/${gistId}`, {
+                    check = await fetch(`https://api.github.com/gists/${gistId}`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
-                    if (check.ok) return gistId;
-                } catch (e) {}
+                } catch (e) {
+                    throw new Error(`Could not reach GitHub: ${e.message}. Gist ID left unchanged.`);
+                }
+
+                if (check.ok) {
+                    return gistId;
+                }
+
+                if (check.status === 404) {
+                    // Gist genuinely doesn't exist — fall through and create a new one.
+                    gistId = null;
+                } else {
+                    // 401, 403, 429, 500, etc. — don't touch the stored ID.
+                    throw new Error(`GitHub returned HTTP ${check.status} for gist ${gistId}. Gist ID left unchanged.`);
+                }
             }
 
             const response = await fetch('https://api.github.com/gists', {
