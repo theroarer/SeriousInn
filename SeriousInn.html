@@ -2236,6 +2236,80 @@
             exportGroup.appendChild(toggleRow);
             container.appendChild(exportGroup);
             
+            // ── Cloud settings ──
+            const cloudGroup = document.createElement('div');
+            cloudGroup.className = 'settings-group';
+            const cloudTitle = document.createElement('h3');
+            cloudTitle.textContent = '☁️ Cloud (GitHub Gist)';
+            cloudGroup.appendChild(cloudTitle);
+
+            const tokenRow = document.createElement('div');
+            tokenRow.className = 'setting-row';
+            const tokenLabel = document.createElement('div');
+            tokenLabel.className = 'setting-label';
+            tokenLabel.innerHTML = '<span>GitHub Token</span>';
+            const tokenInput = document.createElement('input');
+            tokenInput.type = 'password';
+            tokenInput.className = 'setting-input';
+            tokenInput.placeholder = 'ghp_...';
+            tokenInput.value = this.getCloudToken();
+            tokenInput.addEventListener('input', () => {
+                StorageManager.setItem('cloud_github_token', tokenInput.value.trim());
+            });
+            tokenRow.appendChild(tokenLabel);
+            tokenRow.appendChild(tokenInput);
+            cloudGroup.appendChild(tokenRow);
+
+            const deviceRow = document.createElement('div');
+            deviceRow.className = 'setting-row';
+            const deviceLabel = document.createElement('div');
+            deviceLabel.className = 'setting-label';
+            deviceLabel.innerHTML = '<span>Device Name</span>';
+            const deviceInput = document.createElement('input');
+            deviceInput.type = 'text';
+            deviceInput.className = 'setting-input';
+            deviceInput.placeholder = 'e.g. Chromebook, iPhone';
+            deviceInput.value = this.getDeviceName() === 'Unknown Device' ? '' : this.getDeviceName();
+            deviceInput.addEventListener('input', () => {
+                StorageManager.setItem('cloud_device_name', deviceInput.value.trim() || 'Unknown Device');
+            });
+            deviceRow.appendChild(deviceLabel);
+            deviceRow.appendChild(deviceInput);
+            cloudGroup.appendChild(deviceRow);
+
+            const gistRow = document.createElement('div');
+            gistRow.className = 'setting-row';
+            const gistLabel = document.createElement('div');
+            gistLabel.className = 'setting-label';
+            gistLabel.innerHTML = '<span>Gist ID</span>';
+            const gistDisplay = document.createElement('input');
+            gistDisplay.type = 'text';
+            gistDisplay.className = 'setting-input';
+            gistDisplay.readOnly = true;
+            gistDisplay.value = this.getCloudGistId() || '(auto-created on first export)';
+            gistRow.appendChild(gistLabel);
+            gistRow.appendChild(gistDisplay);
+            cloudGroup.appendChild(gistRow);
+
+            const testCloudBtn = document.createElement('button');
+            testCloudBtn.id = 'testCloudBtn';
+            testCloudBtn.className = 'test-connection-btn';
+            testCloudBtn.textContent = '🔌 Test Cloud';
+            testCloudBtn.addEventListener('click', () => this.testCloudConnection());
+            cloudGroup.appendChild(testCloudBtn);
+
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'setting-helper';
+            const lastExport = StorageManager.getItem('cloud_last_export');
+            const lastImport = StorageManager.getItem('cloud_last_import');
+            statusDiv.textContent = [
+                lastExport ? `Last export: ${new Date(lastExport).toLocaleString()}` : 'No exports yet',
+                lastImport ? `Last import: ${new Date(lastImport).toLocaleString()}` : 'No imports yet'
+            ].join(' · ');
+            cloudGroup.appendChild(statusDiv);
+
+            container.appendChild(cloudGroup);
+            
             const saveBtn = document.createElement('button');
             saveBtn.textContent = 'Save Settings';
             saveBtn.style.cssText = 'width: 100%; padding: 12px; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; min-height: 44px;';
@@ -2449,7 +2523,8 @@
         _openLorebookMenu(lorebook) {
             const items = [
                 { label: '➕ Add entry', action: () => this.addEntry(lorebook) },
-                { label: '⬇️ Export lorebook', action: () => this.exportLorebook(lorebook) },
+                { label: '💾 Export lorebook', action: () => this.exportLorebook(lorebook) },
+                { label: '☁️💾 Export lorebook to Cloud', action: () => this.exportLorebookToCloud(lorebook) },
                 { label: '🗑️ Delete lorebook', danger: true, action: () => {
                     if (confirm(`Delete lorebook "${lorebook.name}"? This cannot be undone.`)) {
                         this.deleteLorebook(lorebook.id);
@@ -2960,6 +3035,437 @@
                 reader.readAsText(file);
             });
             input.click();
+        }
+
+        showImportOptions() {
+            this.showBottomSheet([
+                { label: '📂 Import from File', action: () => this.importCurrentChat() },
+                { label: '☁️📂 Import from Cloud', action: () => this.openCloudImportModal() }
+            ]);
+        }
+
+        // ── Cloud helpers ──────────────────────────────────────────
+        getCloudToken() {
+            return StorageManager.getItem('cloud_github_token') || '';
+        }
+        getCloudGistId() {
+            return StorageManager.getItem('cloud_gist_id') || '';
+        }
+        getDeviceName() {
+            return StorageManager.getItem('cloud_device_name') || 'Unknown Device';
+        }
+        sanitizeDeviceName(name) {
+            const s = (name || 'device')
+                .toLowerCase()
+                .replace(/\s+/g, '-')
+                .replace(/[^a-z0-9\-_]/g, '')
+                .replace(/-+/g, '-')
+                .replace(/^-|-$/g, '')
+                .substring(0, 20);
+            return s || 'device';
+        }
+
+        async ensureCloudGist() {
+            const token = this.getCloudToken();
+            if (!token) throw new Error('No GitHub token configured. Add one in Settings.');
+
+            let gistId = this.getCloudGistId();
+            if (gistId) {
+                try {
+                    const check = await fetch(`https://api.github.com/gists/${gistId}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (check.ok) return gistId;
+                } catch (e) {}
+            }
+
+            const response = await fetch('https://api.github.com/gists', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    description: 'Roleplay Chat Cloud Bundle',
+                    public: false,
+                    files: {
+                        '_devices.json': {
+                            content: JSON.stringify({ exportVersion: 1, devices: {} }, null, 2)
+                        }
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                let msg = `HTTP ${response.status}`;
+                try { const e = await response.json(); msg = e.message || msg; } catch {}
+                throw new Error(`Failed to create gist: ${msg}`);
+            }
+
+            const data = await response.json();
+            gistId = data.id;
+            StorageManager.setItem('cloud_gist_id', gistId);
+            return gistId;
+        }
+
+        async fetchCloudFiles() {
+            const gistId = await this.ensureCloudGist();
+            const token = this.getCloudToken();
+            const response = await fetch(`https://api.github.com/gists/${gistId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error(`Failed to fetch gist: HTTP ${response.status}`);
+
+            const data = await response.json();
+            const files = data.files || {};
+            const results = [];
+
+            for (const [filename, file] of Object.entries(files)) {
+                if (filename === '_devices.json') continue;
+
+                let content = file.content;
+                if (file.truncated && file.raw_url) {
+                    const raw = await fetch(file.raw_url, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    content = await raw.text();
+                }
+
+                let parsed;
+                try { parsed = JSON.parse(content); } catch { continue; }
+                if (!parsed || !parsed.type) continue;
+
+                results.push({
+                    filename,
+                    type: parsed.type,
+                    deviceName: parsed.deviceName || 'Unknown',
+                    exportedAt: parsed.exportedAt || 0,
+                    name: parsed.type === 'chat'
+                        ? (parsed.chat && parsed.chat.name || 'Untitled Chat')
+                        : (parsed.lorebook && parsed.lorebook.name || 'Untitled Lorebook'),
+                    payload: parsed
+                });
+            }
+
+            results.sort((a, b) => b.exportedAt - a.exportedAt);
+            return { gistId, files: results };
+        }
+
+        async addCloudFile(filename, payload, deviceName) {
+            const gistId = await this.ensureCloudGist();
+            const token = this.getCloudToken();
+
+            let devices = {};
+            try {
+                const current = await fetch(`https://api.github.com/gists/${gistId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (current.ok) {
+                    const data = await current.json();
+                    const manifestFile = data.files['_devices.json'];
+                    if (manifestFile) {
+                        let content = manifestFile.content;
+                        if (manifestFile.truncated && manifestFile.raw_url) {
+                            const raw = await fetch(manifestFile.raw_url, {
+                                headers: { 'Authorization': `Bearer ${token}` }
+                            });
+                            content = await raw.text();
+                        }
+                        const parsed = JSON.parse(content);
+                        devices = parsed.devices || {};
+                    }
+                }
+            } catch (e) {}
+
+            const now = Date.now();
+            if (!devices[deviceName]) {
+                devices[deviceName] = { firstSeen: now, lastSeen: now, exportCount: 0 };
+            }
+            devices[deviceName].lastSeen = now;
+            devices[deviceName].exportCount += 1;
+
+            const manifest = {
+                exportVersion: 1,
+                lastUpdatedAt: now,
+                devices
+            };
+
+            const response = await fetch(`https://api.github.com/gists/${gistId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    files: {
+                        [filename]: { content: JSON.stringify(payload, null, 2) },
+                        '_devices.json': { content: JSON.stringify(manifest, null, 2) }
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                let msg = `HTTP ${response.status}`;
+                try { const e = await response.json(); msg = e.message || msg; } catch {}
+                throw new Error(`Failed to add file: ${msg}`);
+            }
+        }
+
+        async testCloudConnection() {
+            const token = this.getCloudToken();
+            if (!token) { alert('Enter a GitHub token first.'); return; }
+
+            const btn = document.getElementById('testCloudBtn');
+            if (btn) { btn.textContent = '⏳ Testing...'; btn.disabled = true; }
+
+            try {
+                const response = await fetch('https://api.github.com/user', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const user = await response.json();
+                alert(`Connection OK. Signed in as ${user.login}.`);
+            } catch (e) {
+                alert(`Connection failed: ${e.message}`);
+            } finally {
+                if (btn) { btn.textContent = '🔌 Test Cloud'; btn.disabled = false; }
+            }
+        }
+
+        async exportChatToCloud(chatId) {
+            const chat = this.chats.find(c => c.id === chatId);
+            if (!chat) return;
+            if (!this.getCloudToken()) {
+                alert('Set your GitHub token in Settings first.');
+                return;
+            }
+
+            const deviceName = this.getDeviceName();
+            const safeDevice = this.sanitizeDeviceName(deviceName);
+            const filename = `${safeDevice}_chat_${Date.now()}.json`;
+
+            const payload = {
+                type: 'chat',
+                exportedAt: Date.now(),
+                deviceName,
+                chat: JSON.parse(JSON.stringify(chat))
+            };
+
+            try {
+                await this.addCloudFile(filename, payload, deviceName);
+                StorageManager.setItem('cloud_last_export', Date.now());
+                alert(`"${chat.name}" exported to cloud.`);
+            } catch (e) {
+                alert(`Cloud export failed: ${e.message}`);
+            }
+        }
+
+        async exportLorebookToCloud(lorebook) {
+            if (!lorebook) return;
+            if (!this.getCloudToken()) {
+                alert('Set your GitHub token in Settings first.');
+                return;
+            }
+
+            const deviceName = this.getDeviceName();
+            const safeDevice = this.sanitizeDeviceName(deviceName);
+            const filename = `${safeDevice}_lorebook_${Date.now()}.json`;
+
+            const payload = {
+                type: 'lorebook',
+                exportedAt: Date.now(),
+                deviceName,
+                lorebook: JSON.parse(JSON.stringify(lorebook))
+            };
+
+            try {
+                await this.addCloudFile(filename, payload, deviceName);
+                StorageManager.setItem('cloud_last_export', Date.now());
+                alert(`"${lorebook.name}" exported to cloud.`);
+            } catch (e) {
+                alert(`Cloud export failed: ${e.message}`);
+            }
+        }
+
+        async openCloudImportModal() {
+            if (!this.getCloudToken()) {
+                alert('Set your GitHub token in Settings first.');
+                return;
+            }
+
+            let cloud;
+            try {
+                cloud = await this.fetchCloudFiles();
+            } catch (e) {
+                alert(`Cloud import failed: ${e.message}`);
+                return;
+            }
+
+            if (!cloud.files || cloud.files.length === 0) {
+                alert('The cloud gist is empty. Export something first.');
+                return;
+            }
+
+            let overlay = document.getElementById('cloudImportModal');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'cloudImportModal';
+                overlay.className = 'modal-overlay';
+                document.body.appendChild(overlay);
+            }
+            overlay.innerHTML = '';
+
+            const content = document.createElement('div');
+            content.className = 'modal-content';
+
+            const header = document.createElement('div');
+            header.className = 'modal-header';
+            const title = document.createElement('h2');
+            title.textContent = '☁️📂 Import from Cloud';
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'modal-close';
+            closeBtn.textContent = '✕';
+            closeBtn.addEventListener('click', () => overlay.classList.remove('active'));
+            header.appendChild(title);
+            header.appendChild(closeBtn);
+            content.appendChild(header);
+
+            const body = document.createElement('div');
+            body.className = 'modal-body';
+            content.appendChild(body);
+
+            const selRow = document.createElement('div');
+            selRow.style.cssText = 'display:flex; gap:8px; margin-bottom:8px;';
+            const selAllBtn = document.createElement('button');
+            selAllBtn.className = 'modal-secondary-btn';
+            selAllBtn.textContent = 'Select All';
+            selAllBtn.style.flex = '1';
+            const selNoneBtn = document.createElement('button');
+            selNoneBtn.className = 'modal-secondary-btn';
+            selNoneBtn.textContent = 'Select None';
+            selNoneBtn.style.flex = '1';
+            selRow.appendChild(selAllBtn);
+            selRow.appendChild(selNoneBtn);
+            body.appendChild(selRow);
+
+            const list = document.createElement('div');
+            list.className = 'message-list';
+            list.style.maxHeight = '50vh';
+
+            const checkboxes = [];
+
+            cloud.files.forEach((file, idx) => {
+                const row = document.createElement('label');
+                row.className = 'message-list-item';
+                row.style.cssText = 'display:flex; align-items:flex-start; gap:8px; cursor:pointer;';
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.style.cssText = 'width:18px; height:18px; margin-top:2px; flex-shrink:0; accent-color:var(--accent);';
+                cb.dataset.index = idx;
+
+                const info = document.createElement('div');
+                info.style.flex = '1';
+
+                const typeLabel = document.createElement('div');
+                typeLabel.className = 'message-list-role';
+                typeLabel.textContent = file.type === 'chat' ? '💬 Chat' : '📚 Lorebook';
+
+                const nameEl = document.createElement('div');
+                nameEl.className = 'message-list-preview';
+                nameEl.style.fontWeight = '600';
+                nameEl.style.color = 'var(--text-primary)';
+                nameEl.textContent = file.name;
+
+                const meta = document.createElement('div');
+                meta.className = 'message-list-role';
+                meta.style.marginTop = '2px';
+                const date = file.exportedAt ? new Date(file.exportedAt).toLocaleString() : 'Unknown date';
+                meta.textContent = `${file.deviceName} · ${date}`;
+
+                info.appendChild(typeLabel);
+                info.appendChild(nameEl);
+                info.appendChild(meta);
+
+                row.appendChild(cb);
+                row.appendChild(info);
+                list.appendChild(row);
+
+                checkboxes.push(cb);
+            });
+
+            body.appendChild(list);
+
+            selAllBtn.addEventListener('click', () => checkboxes.forEach(cb => cb.checked = true));
+            selNoneBtn.addEventListener('click', () => checkboxes.forEach(cb => cb.checked = false));
+
+            const footer = document.createElement('div');
+            footer.className = 'modal-footer';
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'modal-secondary-btn';
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.addEventListener('click', () => overlay.classList.remove('active'));
+            footer.appendChild(cancelBtn);
+
+            const importBtn = document.createElement('button');
+            importBtn.className = 'modal-primary-btn';
+            importBtn.textContent = 'Import Selected';
+            importBtn.addEventListener('click', async () => {
+                const selected = checkboxes
+                    .filter(cb => cb.checked)
+                    .map(cb => cloud.files[parseInt(cb.dataset.index, 10)]);
+
+                if (selected.length === 0) {
+                    alert('Select at least one item.');
+                    return;
+                }
+
+                importBtn.disabled = true;
+                importBtn.textContent = 'Importing…';
+
+                let chatCount = 0;
+                let lorebookCount = 0;
+
+                for (const file of selected) {
+                    const payload = file.payload;
+                    if (payload.type === 'chat' && payload.chat) {
+                        const chat = this.normalizeImportedChat(payload.chat);
+                        chat.id = this.generateId();
+                        chat.name = (chat.name || 'Untitled') + ' (cloud)';
+                        this.chats.push(chat);
+                        chatCount++;
+                    } else if (payload.type === 'lorebook' && payload.lorebook) {
+                        const lb = payload.lorebook;
+                        const lorebook = {
+                            id: this.generateId(),
+                            name: (lb.name || 'Untitled') + ' (cloud)',
+                            entries: (lb.entries || []).map((entry, i) => ({
+                                ...entry,
+                                uid: Date.now() + i + Math.floor(Math.random() * 10000)
+                            })),
+                            imported: Date.now()
+                        };
+                        await LorebookStorage.saveLorebook(lorebook);
+                        this.lorebooks.push(lorebook);
+                        lorebookCount++;
+                    }
+                }
+
+                this.saveToStorage();
+                this.renderChatList();
+                if (this.currentView === 'lore') this.renderLoreManagement();
+
+                StorageManager.setItem('cloud_last_import', Date.now());
+                overlay.classList.remove('active');
+                alert(`Imported ${chatCount} chat${chatCount === 1 ? '' : 's'} and ${lorebookCount} lorebook${lorebookCount === 1 ? '' : 's'}.`);
+            });
+            footer.appendChild(importBtn);
+
+            body.appendChild(footer);
+            content.appendChild(body);
+            overlay.appendChild(content);
+            overlay.classList.add('active');
         }
 
         async sendMessage() {
@@ -3606,6 +4112,7 @@
                 { label: '💬 Summarize Range', action: () => this._chatAction(chatId, () => this.openSummarizeModal(chatId)) },
                 { label: '📋 Duplicate', action: () => this._chatAction(chatId, () => this.duplicateCurrentChat()) },
                 { label: '💾 Export', action: () => this._chatAction(chatId, () => this.exportCurrentChat()) },
+                { label: '☁️💾 Export to Cloud', action: () => this._chatAction(chatId, () => this.exportChatToCloud(chatId)) },
                 { label: '🗑️ Delete', danger: true, action: () => this._chatAction(chatId, () => this.deleteCurrentChat()) }
             ];
             
@@ -4479,7 +4986,7 @@ ${transcript}
             
             document.getElementById('viewToggleBtn').addEventListener('click', () => this.toggleView());
             document.getElementById('settingsToggleBtn').addEventListener('click', () => this.toggleSettingsView());
-            document.getElementById('importChatBtn').addEventListener('click', () => this.importCurrentChat());
+            document.getElementById('importChatBtn').addEventListener('click', () => this.showImportOptions());
             document.getElementById('sendButton').addEventListener('click', () => this.handleSendButton());
             
             const messageInput = document.getElementById('messageInput');
