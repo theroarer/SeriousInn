@@ -1886,7 +1886,7 @@
             }
         }
 
-        // Shared parser used by file, URL and cloud imports.
+        // Shared parser used by file, URL, and cloud imports.
         // Accepts either a SillyTavern lorebook ({ entries: {...} }) or this
         // app's own multi-book bundle ({ roleplay_chat_lorebooks: 1, lorebooks: [...] }).
         async importLorebookFromText(text, fallbackName = 'Imported Lorebook') {
@@ -2520,9 +2520,7 @@
             importBtn.className = 'sidebar-action-btn';
             importBtn.textContent = '📚 Import';
             importBtn.style.cssText = 'flex: 1; text-align: center; padding-left: 10px;';
-            importBtn.addEventListener('click', () => {
-                document.getElementById('lorebookFileInput').click();
-            });
+            importBtn.addEventListener('click', () => this.showLorebookImportOptions());
             topBar.appendChild(importBtn);
             
             const menuBtn = document.createElement('button');
