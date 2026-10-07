@@ -2408,29 +2408,46 @@
             exportGroup.appendChild(toggleRow);
             container.appendChild(exportGroup);
             
-            // ── Cloud settings ──
+            // ── Cloud settings (R2) ──
             const cloudGroup = document.createElement('div');
             cloudGroup.className = 'settings-group';
             const cloudTitle = document.createElement('h3');
-            cloudTitle.textContent = '☁️ Cloud (GitHub Gist)';
+            cloudTitle.textContent = '☁️ Cloud (Cloudflare R2)';
             cloudGroup.appendChild(cloudTitle);
 
-            const tokenRow = document.createElement('div');
-            tokenRow.className = 'setting-row';
-            const tokenLabel = document.createElement('div');
-            tokenLabel.className = 'setting-label';
-            tokenLabel.innerHTML = '<span>GitHub Token</span>';
-            const tokenInput = document.createElement('input');
-            tokenInput.type = 'password';
-            tokenInput.className = 'setting-input';
-            tokenInput.placeholder = 'ghp_...';
-            tokenInput.value = this.getCloudToken();
-            tokenInput.addEventListener('input', () => {
-                StorageManager.setItem('cloud_github_token', tokenInput.value.trim());
+            const endpointRow = document.createElement('div');
+            endpointRow.className = 'setting-row';
+            const endpointLabel = document.createElement('div');
+            endpointLabel.className = 'setting-label';
+            endpointLabel.innerHTML = '<span>Worker URL</span>';
+            const endpointInput = document.createElement('input');
+            endpointInput.type = 'text';
+            endpointInput.className = 'setting-input';
+            endpointInput.placeholder = 'https://your-worker.workers.dev';
+            endpointInput.value = this.getCloudEndpoint();
+            endpointInput.addEventListener('input', () => {
+                StorageManager.setItem('cloud_r2_endpoint', endpointInput.value.trim().replace(/\/$/, ''));
             });
-            tokenRow.appendChild(tokenLabel);
-            tokenRow.appendChild(tokenInput);
-            cloudGroup.appendChild(tokenRow);
+            endpointRow.appendChild(endpointLabel);
+            endpointRow.appendChild(endpointInput);
+            cloudGroup.appendChild(endpointRow);
+
+            const passRow = document.createElement('div');
+            passRow.className = 'setting-row';
+            const passLabel = document.createElement('div');
+            passLabel.className = 'setting-label';
+            passLabel.innerHTML = '<span>App Password</span>';
+            const passInput = document.createElement('input');
+            passInput.type = 'password';
+            passInput.className = 'setting-input';
+            passInput.placeholder = 'Matches APP_PASSWORD in your Worker';
+            passInput.value = this.getCloudPassword();
+            passInput.addEventListener('input', () => {
+                StorageManager.setItem('cloud_r2_password', passInput.value);
+            });
+            passRow.appendChild(passLabel);
+            passRow.appendChild(passInput);
+            cloudGroup.appendChild(passRow);
 
             const deviceRow = document.createElement('div');
             deviceRow.className = 'setting-row';
@@ -2448,28 +2465,6 @@
             deviceRow.appendChild(deviceLabel);
             deviceRow.appendChild(deviceInput);
             cloudGroup.appendChild(deviceRow);
-
-            const gistRow = document.createElement('div');
-            gistRow.className = 'setting-row';
-            const gistLabel = document.createElement('div');
-            gistLabel.className = 'setting-label';
-            gistLabel.innerHTML = '<span>Gist ID</span>';
-            const gistDisplay = document.createElement('input');
-            gistDisplay.type = 'text';
-            gistDisplay.className = 'setting-input';
-            gistDisplay.value = this.getCloudGistId() || '';
-            gistDisplay.placeholder = '(auto-created on first export)';
-            const saveGistId = () => {
-                const val = gistDisplay.value.trim();
-                if (val) StorageManager.setItem('cloud_gist_id', val);
-                else StorageManager.removeItem('cloud_gist_id');
-            };
-            gistDisplay.addEventListener('input', saveGistId);
-            gistDisplay.addEventListener('change', saveGistId);
-            gistDisplay.addEventListener('blur', saveGistId);
-            gistRow.appendChild(gistLabel);
-            gistRow.appendChild(gistDisplay);
-            cloudGroup.appendChild(gistRow);
 
             const testCloudBtn = document.createElement('button');
             testCloudBtn.id = 'testCloudBtn';
@@ -3222,12 +3217,12 @@
             ]);
         }
 
-        // ── Cloud helpers ──────────────────────────────────────────
-        getCloudToken() {
-            return StorageManager.getItem('cloud_github_token') || '';
+        // ── Cloud helpers (Cloudflare R2 via Worker) ───────────────
+        getCloudEndpoint() {
+            return StorageManager.getItem('cloud_r2_endpoint') || '';
         }
-        getCloudGistId() {
-            return StorageManager.getItem('cloud_gist_id') || '';
+        getCloudPassword() {
+            return StorageManager.getItem('cloud_r2_password') || '';
         }
         getDeviceName() {
             return StorageManager.getItem('cloud_device_name') || 'Unknown Device';
@@ -3243,180 +3238,106 @@
             return s || 'device';
         }
 
-        async ensureCloudGist() {
-            const token = this.getCloudToken();
-            if (!token) throw new Error('No GitHub token configured. Add one in Settings.');
+        _cloudHeaders() {
+            return {
+                'X-App-Password': this.getCloudPassword(),
+            };
+        }
 
-            let gistId = this.getCloudGistId();
-            if (gistId) {
-                let check;
-                try {
-                    check = await fetch(`https://api.github.com/gists/${gistId}`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                } catch (e) {
-                    throw new Error(`Could not reach GitHub: ${e.message}. Gist ID left unchanged.`);
-                }
+        _cloudUrl(path) {
+            const base = this.getCloudEndpoint();
+            if (!base) throw new Error('No Worker URL configured. Add one in Settings.');
+            return `${base}${path.startsWith('/') ? path : '/' + path}`;
+        }
 
-                if (check.ok) {
-                    return gistId;
-                }
-
-                if (check.status === 404) {
-                    // Gist genuinely doesn't exist — fall through and create a new one.
-                    gistId = null;
-                } else {
-                    // 401, 403, 429, 500, etc. — don't touch the stored ID.
-                    throw new Error(`GitHub returned HTTP ${check.status} for gist ${gistId}. Gist ID left unchanged.`);
-                }
-            }
-
-            const response = await fetch('https://api.github.com/gists', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    description: 'Roleplay Chat Cloud Bundle',
-                    public: false,
-                    files: {
-                        '_devices.json': {
-                            content: JSON.stringify({ exportVersion: 1, devices: {} }, null, 2)
-                        }
-                    }
-                })
-            });
-
+        async _cloudFetch(path, options = {}) {
+            const url = this._cloudUrl(path);
+            const headers = { ...this._cloudHeaders(), ...(options.headers || {}) };
+            const response = await fetch(url, { ...options, headers });
             if (!response.ok) {
                 let msg = `HTTP ${response.status}`;
-                try { const e = await response.json(); msg = e.message || msg; } catch {}
-                throw new Error(`Failed to create gist: ${msg}`);
+                try {
+                    const text = await response.text();
+                    if (text) msg += `: ${text.substring(0, 200)}`;
+                } catch {}
+                throw new Error(msg);
             }
+            return response;
+        }
 
+        async _cloudList() {
+            const response = await this._cloudFetch('/list');
             const data = await response.json();
-            gistId = data.id;
-            StorageManager.setItem('cloud_gist_id', gistId);
-            return gistId;
+            return data.files || [];
+        }
+
+        async _cloudGetText(key) {
+            const response = await this._cloudFetch('/' + encodeURIComponent(key));
+            return await response.text();
+        }
+
+        async _cloudPutText(key, text) {
+            await this._cloudFetch('/' + encodeURIComponent(key), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: text,
+            });
+        }
+
+        async _cloudDelete(key) {
+            await this._cloudFetch('/' + encodeURIComponent(key), { method: 'DELETE' });
         }
 
         async fetchCloudFiles() {
-            const gistId = await this.ensureCloudGist();
-            const token = this.getCloudToken();
-            const response = await fetch(`https://api.github.com/gists/${gistId}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!response.ok) throw new Error(`Failed to fetch gist: HTTP ${response.status}`);
-
-            const data = await response.json();
-            const files = data.files || {};
+            const listed = await this._cloudList();
             const results = [];
 
-            for (const [filename, file] of Object.entries(files)) {
-                if (filename === '_devices.json') continue;
-
-                let content = file.content;
-                if (file.truncated && file.raw_url) {
-                    const raw = await fetch(file.raw_url, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    content = await raw.text();
-                }
-
+            for (const entry of listed) {
                 let parsed;
-                try { parsed = JSON.parse(content); } catch { continue; }
+                try {
+                    const text = await this._cloudGetText(entry.name);
+                    parsed = JSON.parse(text);
+                } catch (e) {
+                    continue;
+                }
                 if (!parsed || !parsed.type) continue;
 
                 results.push({
-                    filename,
+                    filename: entry.name,
                     type: parsed.type,
                     deviceName: parsed.deviceName || 'Unknown',
-                    exportedAt: parsed.exportedAt || 0,
+                    exportedAt: parsed.exportedAt || entry.uploaded || 0,
                     name: parsed.type === 'chat'
                         ? (parsed.chat && parsed.chat.name || 'Untitled Chat')
                         : (parsed.lorebook && parsed.lorebook.name || 'Untitled Lorebook'),
-                    payload: parsed
+                    payload: parsed,
                 });
             }
 
             results.sort((a, b) => b.exportedAt - a.exportedAt);
-            return { gistId, files: results };
+            return { files: results };
         }
 
-        async addCloudFile(filename, payload, deviceName) {
-            const gistId = await this.ensureCloudGist();
-            const token = this.getCloudToken();
-
-            let devices = {};
-            try {
-                const current = await fetch(`https://api.github.com/gists/${gistId}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (current.ok) {
-                    const data = await current.json();
-                    const manifestFile = data.files['_devices.json'];
-                    if (manifestFile) {
-                        let content = manifestFile.content;
-                        if (manifestFile.truncated && manifestFile.raw_url) {
-                            const raw = await fetch(manifestFile.raw_url, {
-                                headers: { 'Authorization': `Bearer ${token}` }
-                            });
-                            content = await raw.text();
-                        }
-                        const parsed = JSON.parse(content);
-                        devices = parsed.devices || {};
-                    }
-                }
-            } catch (e) {}
-
-            const now = Date.now();
-            if (!devices[deviceName]) {
-                devices[deviceName] = { firstSeen: now, lastSeen: now, exportCount: 0 };
-            }
-            devices[deviceName].lastSeen = now;
-            devices[deviceName].exportCount += 1;
-
-            const manifest = {
-                exportVersion: 1,
-                lastUpdatedAt: now,
-                devices
-            };
-
-            const response = await fetch(`https://api.github.com/gists/${gistId}`, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    files: {
-                        [filename]: { content: JSON.stringify(payload, null, 2) },
-                        '_devices.json': { content: JSON.stringify(manifest, null, 2) }
-                    }
-                })
-            });
-
-            if (!response.ok) {
-                let msg = `HTTP ${response.status}`;
-                try { const e = await response.json(); msg = e.message || msg; } catch {}
-                throw new Error(`Failed to add file: ${msg}`);
-            }
+        async addCloudFile(filename, payload) {
+            await this._cloudPutText(filename, JSON.stringify(payload, null, 2));
         }
 
         async testCloudConnection() {
-            const token = this.getCloudToken();
-            if (!token) { alert('Enter a GitHub token first.'); return; }
+            if (!this.getCloudEndpoint()) {
+                alert('Enter your Worker URL first.');
+                return;
+            }
+            if (!this.getCloudPassword()) {
+                alert('Enter your App Password first.');
+                return;
+            }
 
             const btn = document.getElementById('testCloudBtn');
             if (btn) { btn.textContent = '⏳ Testing...'; btn.disabled = true; }
 
             try {
-                const response = await fetch('https://api.github.com/user', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const user = await response.json();
-                alert(`Connection OK. Signed in as ${user.login}.`);
+                const files = await this._cloudList();
+                alert(`Connection OK. ${files.length} file${files.length === 1 ? '' : 's'} in bucket.`);
             } catch (e) {
                 alert(`Connection failed: ${e.message}`);
             } finally {
@@ -3427,8 +3348,8 @@
         async exportChatToCloud(chatId) {
             const chat = this.chats.find(c => c.id === chatId);
             if (!chat) return;
-            if (!this.getCloudToken()) {
-                alert('Set your GitHub token in Settings first.');
+            if (!this.getCloudEndpoint() || !this.getCloudPassword()) {
+                alert('Set your Worker URL and App Password in Settings first.');
                 return;
             }
 
@@ -3454,8 +3375,8 @@
 
         async exportLorebookToCloud(lorebook) {
             if (!lorebook) return;
-            if (!this.getCloudToken()) {
-                alert('Set your GitHub token in Settings first.');
+            if (!this.getCloudEndpoint() || !this.getCloudPassword()) {
+                alert('Set your Worker URL and App Password in Settings first.');
                 return;
             }
 
@@ -3480,8 +3401,8 @@
         }
 
         async openCloudImportModal() {
-            if (!this.getCloudToken()) {
-                alert('Set your GitHub token in Settings first.');
+            if (!this.getCloudEndpoint() || !this.getCloudPassword()) {
+                alert('Set your Worker URL and App Password in Settings first.');
                 return;
             }
 
@@ -3494,7 +3415,7 @@
             }
 
             if (!cloud.files || cloud.files.length === 0) {
-                alert('The cloud gist is empty. Export something first.');
+                alert('The cloud bucket is empty. Export something first.');
                 return;
             }
 
