@@ -363,7 +363,8 @@
             left: 0;
             right: 0;
             width: 100%;
-            max-height: 300px;
+            height: min(420px, calc(100dvh - 24px));
+            max-height: none;
             background: var(--bg-primary);
             border: 1px solid var(--border);
             border-radius: 6px;
@@ -414,7 +415,8 @@
         }
 
         .model-options-container {
-            flex: 1;
+            flex: 1 1 auto;
+            min-height: 0;
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             padding: 0 12px 12px 12px;
@@ -1595,7 +1597,7 @@
                         <input type="text" class="model-search-input" id="modelSearch" placeholder="Search models...">
                         <div class="model-manual-row">
                             <input type="text" class="model-search-input" id="manualModelInput" placeholder="Or enter an exact model ID..." spellcheck="false">
-                            <button type="button" id="useManualModelBtn">Use</button>
+                            <button type="button" id="useManualModelBtn" title="Apply the typed model ID (listed models apply immediately when clicked)">Use ID</button>
                         </div>
                         <div class="model-options-container" id="modelOptions"></div>
                     </div>
@@ -4340,28 +4342,21 @@
         _positionModelDropdown() {
             const wrapper = document.getElementById('modelSelectWrapper');
             const dropdown = document.getElementById('modelDropdown');
-            const sidebar = document.getElementById('sidebar');
-            if (!wrapper || !dropdown || !sidebar) return;
-            if (!dropdown.classList.contains('active')) return;
-            dropdown.style.maxHeight = '';
-            const triggerRect = wrapper.getBoundingClientRect();
-            const viewportHeight = window.innerHeight;
+            if (!wrapper || !dropdown || !dropdown.classList.contains('active')) return;
+            const rect = wrapper.getBoundingClientRect();
             const margin = 12;
-            const minHeight = 150;
-            const preferredHeight = 300;
-            const maxScrollRemaining = Math.max(0, sidebar.scrollHeight - sidebar.clientHeight - sidebar.scrollTop);
-            const lowestTriggerBottom = triggerRect.bottom - maxScrollRemaining;
-            const maxPossible = viewportHeight - lowestTriggerBottom - margin;
-            let targetHeight;
-            if (maxPossible >= preferredHeight) targetHeight = preferredHeight;
-            else targetHeight = Math.max(minHeight, maxPossible);
-            dropdown.style.maxHeight = targetHeight + 'px';
-            const actualHeight = dropdown.offsetHeight || targetHeight;
-            const scrollNeeded = triggerRect.bottom + actualHeight + margin - viewportHeight;
-            if (scrollNeeded > 0) {
-                const targetScroll = Math.min(sidebar.scrollTop + scrollNeeded, sidebar.scrollHeight - sidebar.clientHeight);
-                sidebar.scrollTop = targetScroll;
-            }
+            const desiredHeight = 420;
+            const below = window.innerHeight - rect.bottom - margin;
+            const above = rect.top - margin;
+            const openAbove = below < 280 && above > below;
+            const available = Math.max(180, openAbove ? above : below);
+            dropdown.style.position = 'fixed';
+            dropdown.style.left = Math.max(margin, rect.left) + 'px';
+            dropdown.style.width = Math.min(rect.width, window.innerWidth - 2 * margin) + 'px';
+            dropdown.style.right = 'auto';
+            dropdown.style.top = openAbove ? 'auto' : Math.max(margin, rect.bottom + 4) + 'px';
+            dropdown.style.bottom = openAbove ? Math.max(margin, window.innerHeight - rect.top + 4) + 'px' : 'auto';
+            dropdown.style.height = Math.min(desiredHeight, available) + 'px';
         }
 
         renderMessages(options = {}) {
