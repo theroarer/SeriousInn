@@ -702,6 +702,16 @@
             display: block;
         }
 
+        .provider-endpoint-row { margin-top: 10px; }
+        .provider-endpoint-row[hidden] { display: none; }
+        #providerSelect { margin-bottom: 10px; }
+        .model-manual-row { display: flex; gap: 6px; padding: 8px; }
+        .model-manual-row .model-search-input { flex: 1; min-width: 0; }
+        .model-manual-row button { padding: 0 10px; border: none; border-radius: 5px; background: var(--accent); color: white; cursor: pointer; }
+        .message-reasoning { margin: 6px 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-secondary); }
+        .message-reasoning summary { cursor: pointer; padding: 8px 10px; color: var(--text-secondary); font-size: 12px; }
+        .message-reasoning pre { color: var(--text-secondary); font: inherit; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; padding: 0 10px 10px; }
+
         .settings-group {
             background: var(--bg-secondary);
             border-radius: 8px;
@@ -1545,8 +1555,17 @@
         </div>
         
         <div class="api-key-section">
-            <label class="api-key-label" for="apiKeyInput">OpenRouter API Key:</label>
-            <input type="password" class="api-key-input" id="apiKeyInput" placeholder="sk-or-...">
+            <label class="api-key-label" for="providerSelect">Provider:</label>
+            <select class="api-key-input" id="providerSelect" aria-label="LLM provider">
+                <option value="openrouter">OpenRouter</option>
+                <option value="nanogpt">NanoGPT</option>
+            </select>
+            <label class="api-key-label" id="apiKeyLabel" for="apiKeyInput">OpenRouter API Key:</label>
+            <input type="password" class="api-key-input" id="apiKeyInput" placeholder="sk-or-..." autocomplete="off">
+            <div id="nanogptEndpointRow" class="provider-endpoint-row" hidden>
+                <label class="api-key-label" for="nanogptEndpointInput">NanoGPT API Base URL:</label>
+                <input type="url" class="api-key-input" id="nanogptEndpointInput" spellcheck="false" placeholder="https://nano-gpt.com/api/v1">
+            </div>
             <div class="save-indicator" id="saveIndicator"></div>
             <button class="test-connection-btn" id="testConnectionBtn">🔌 Test Connection</button>
             
@@ -1560,6 +1579,10 @@
                             <button class="model-dropdown-close" id="modelDropdownClose" title="Close">✕</button>
                         </div>
                         <input type="text" class="model-search-input" id="modelSearch" placeholder="Search models...">
+                        <div class="model-manual-row">
+                            <input type="text" class="model-search-input" id="manualModelInput" placeholder="Or enter an exact model ID..." spellcheck="false">
+                            <button type="button" id="useManualModelBtn">Use</button>
+                        </div>
                         <div class="model-options-container" id="modelOptions"></div>
                     </div>
                 </div>
@@ -1727,6 +1750,9 @@
             this.currentChatId = null;
             this.availableModels = [];
             this.selectedModel = null;
+            this.provider = StorageManager.getItem('llm_provider') === 'nanogpt' ? 'nanogpt' : 'openrouter';
+            this._modelsFetchSequence = 0;
+            this._modelFetchTimer = null;
             this.lorebooks = [];
             this.currentView = 'chat';
             this.abortController = null;
@@ -1739,7 +1765,8 @@
             this.llmSettings = {
                 temperature: 0.7, top_p: 0.9, top_k: 0,
                 frequency_penalty: 0.0, presence_penalty: 0.0,
-                repetition_penalty: 1.0, min_p: 0.0, top_a: 0.0, max_tokens: 4096
+                repetition_penalty: 1.0, min_p: 0.0, top_a: 0.0, max_tokens: 4096,
+                reasoningEffort: 'off', showReasoning: true
             };
             this.exportSettings = { flatten: false };
             this.uiSettings = { maxInputLines: 5 };
@@ -1772,15 +1799,93 @@
             this.autoResizeInput();
             
             const apiKey = this.getApiKey();
-            if (apiKey) this.fetchModels(apiKey);
+            if (apiKey) this.fetchModels().catch(() => {});
         }
 
-        getApiKey() { return StorageManager.getItem('openrouter_api_key') || ''; }
-        getModel() { return StorageManager.getItem('openrouter_model') || null; }
+        getApiKey(provider = this.provider) { return StorageManager.getItem(`${provider}_api_key`) || ''; }
+        getModel(provider = this.provider) { return StorageManager.getItem(`${provider}_model`) || null; }
+
+        getProviderBaseUrl(provider = this.provider) {
+            if (provider === 'openrouter') return 'https://openrouter.ai/api/v1';
+            const url = String(StorageManager.getItem('nanogpt_base_url') || 'https://nano-gpt.com/api/v1').trim().replace(/\/+$/, '');
+            if (!/^https:\/\/[^/]+/i.test(url)) throw new Error('NanoGPT API URL must start with https://');
+            return url;
+        }
+
+        getProviderHeaders(provider = this.provider) {
+            const headers = {
+                'Authorization': `Bearer ${this.getApiKey(provider)}`,
+                'Content-Type': 'application/json'
+            };
+            if (provider === 'openrouter') {
+                headers['HTTP-Referer'] = window.location.href;
+                headers['X-Title'] = 'Roleplay Chat';
+            }
+            return headers;
+        }
+
+        buildCompletionRequest(model, messages, overrides = {}) {
+            const settings = this.llmSettings;
+            const body = {
+                model,
+                messages,
+                temperature: settings.temperature,
+                top_p: settings.top_p,
+                frequency_penalty: settings.frequency_penalty,
+                presence_penalty: settings.presence_penalty,
+                max_tokens: settings.max_tokens,
+                stream: true
+            };
+            if (this.provider === 'openrouter') {
+                Object.assign(body, {
+                    top_k: settings.top_k,
+                    repetition_penalty: settings.repetition_penalty,
+                    min_p: settings.min_p,
+                    top_a: settings.top_a,
+                    stream_options: { include_usage: true }
+                });
+            }
+            Object.assign(body, overrides);
+            const effort = settings.reasoningEffort;
+            if (effort === 'low' || effort === 'medium' || effort === 'high') {
+                if (this.provider === 'openrouter') body.reasoning = { effort };
+                else body.reasoning_effort = effort;
+            } else if (this.provider === 'openrouter') {
+                body.reasoning = { enabled: false };
+            }
+            return body;
+        }
+
+        extractReasoningDelta(delta) {
+            if (!delta || typeof delta !== 'object') return '';
+            if (typeof delta.reasoning === 'string') return delta.reasoning;
+            if (typeof delta.reasoning_content === 'string') return delta.reasoning_content;
+            if (Array.isArray(delta.reasoning_details)) {
+                return delta.reasoning_details.map(part => {
+                    if (!part || typeof part !== 'object') return '';
+                    return typeof part.text === 'string' ? part.text :
+                        typeof part.content === 'string' ? part.content : '';
+                }).join('');
+            }
+            return '';
+        }
+
+        makeReasoningElement(value) {
+            const details = document.createElement('details');
+            details.className = 'message-reasoning';
+            const summary = document.createElement('summary');
+            summary.textContent = 'Thinking (provided by model)';
+            const pre = document.createElement('pre');
+            pre.textContent = value;
+            details.appendChild(summary);
+            details.appendChild(pre);
+            return details;
+        }
 
         loadLLMSettings() {
             const saved = StorageManager.getItem('llm_settings');
             if (saved) this.llmSettings = { ...this.llmSettings, ...saved };
+            if (!['off', 'low', 'medium', 'high'].includes(this.llmSettings.reasoningEffort)) this.llmSettings.reasoningEffort = 'off';
         }
         saveLLMSettings() { StorageManager.setItem('llm_settings', this.llmSettings); }
 
@@ -2338,6 +2443,46 @@
             form.appendChild(createSlider('Min P', 'min_p', 0, 1, 0.01));
             form.appendChild(createSlider('Top A', 'top_a', 0, 1, 0.01));
             form.appendChild(createNumberInput('Max Tokens', 'max_tokens', 1, 8192));
+
+            const reasoningRow = document.createElement('div');
+            reasoningRow.className = 'setting-row';
+            const reasoningLabel = document.createElement('label');
+            reasoningLabel.className = 'setting-label';
+            reasoningLabel.textContent = 'Thinking / reasoning effort';
+            const reasoningSelect = document.createElement('select');
+            reasoningSelect.className = 'setting-input';
+            for (const [value, label] of [['off', 'Off'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High']]) {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                reasoningSelect.appendChild(option);
+            }
+            reasoningSelect.value = settings.reasoningEffort;
+            reasoningSelect.addEventListener('change', () => {
+                settings.reasoningEffort = reasoningSelect.value;
+                this.saveLLMSettings();
+            });
+            reasoningRow.appendChild(reasoningLabel);
+            reasoningRow.appendChild(reasoningSelect);
+            const reasoningHelp = document.createElement('p');
+            reasoningHelp.className = 'setting-helper';
+            reasoningHelp.textContent = 'Only works on supported models. NanoGPT reasoning_effort support depends on its API/model.';
+            reasoningRow.appendChild(reasoningHelp);
+            form.appendChild(reasoningRow);
+
+            const showReasoningLabel = document.createElement('label');
+            showReasoningLabel.className = 'setting-label';
+            const showReasoningCheckbox = document.createElement('input');
+            showReasoningCheckbox.type = 'checkbox';
+            showReasoningCheckbox.checked = !!settings.showReasoning;
+            showReasoningCheckbox.addEventListener('change', () => {
+                settings.showReasoning = showReasoningCheckbox.checked;
+                this.saveLLMSettings();
+                if (this.currentView === 'chat') this.renderMessages();
+            });
+            showReasoningLabel.appendChild(showReasoningCheckbox);
+            showReasoningLabel.appendChild(document.createTextNode(' Show model-provided thinking in chat'));
+            form.appendChild(showReasoningLabel);
             container.appendChild(form);
             
             const inputGroup = document.createElement('div');
@@ -2920,6 +3065,7 @@
                                 if (m.regenerating) delete m.regenerating;
                                 if (m.streaming) delete m.streaming;
                                 if (m._streamPreview !== undefined) delete m._streamPreview;
+                                if (m._reasoningPreview !== undefined) delete m._reasoningPreview;
                             });
                         }
                     });
@@ -2932,23 +3078,47 @@
         }
 
         loadSettings() {
-            const apiKey = this.getApiKey();
-            const model = this.getModel();
-            if (apiKey) document.getElementById('apiKeyInput').value = apiKey;
-            if (model) {
-                this.selectedModel = model;
-                document.getElementById('modelSelect').textContent = model;
-            }
+            document.getElementById('providerSelect').value = this.provider;
+            document.getElementById('apiKeyLabel').textContent = this.provider === 'openrouter' ? 'OpenRouter API Key:' : 'NanoGPT API Key:';
+            document.getElementById('apiKeyInput').placeholder = this.provider === 'openrouter' ? 'sk-or-...' : 'NanoGPT API key';
+            document.getElementById('apiKeyInput').value = this.getApiKey();
+            document.getElementById('nanogptEndpointRow').hidden = this.provider !== 'nanogpt';
+            document.getElementById('nanogptEndpointInput').value = StorageManager.getItem('nanogpt_base_url') || 'https://nano-gpt.com/api/v1';
+            this.selectedModel = this.getModel();
+            document.getElementById('modelSelect').textContent = this.selectedModel || 'Select a model...';
+            document.getElementById('manualModelInput').value = this.selectedModel || '';
         }
 
         saveSettings() {
-            const apiKeyInput = document.getElementById('apiKeyInput');
-            const apiKey = apiKeyInput ? apiKeyInput.value : '';
-            if (apiKey) StorageManager.setItem('openrouter_api_key', apiKey);
-            else StorageManager.removeItem('openrouter_api_key');
-            if (this.selectedModel) StorageManager.setItem('openrouter_model', this.selectedModel);
-            else StorageManager.removeItem('openrouter_model');
+            const apiKey = document.getElementById('apiKeyInput').value.trim();
+            if (apiKey) StorageManager.setItem(`${this.provider}_api_key`, apiKey);
+            else StorageManager.removeItem(`${this.provider}_api_key`);
+            if (this.selectedModel) StorageManager.setItem(`${this.provider}_model`, this.selectedModel);
+            else StorageManager.removeItem(`${this.provider}_model`);
             this.showSaveIndicator();
+        }
+
+        switchProvider(provider) {
+            if (!['openrouter', 'nanogpt'].includes(provider) || provider === this.provider) return;
+            this.saveSettings();
+            this.provider = provider;
+            StorageManager.setItem('llm_provider', provider);
+            this._modelsFetchSequence++;
+            clearTimeout(this._modelFetchTimer);
+            this.availableModels = [];
+            this.loadSettings();
+            this.renderModelOptions();
+            if (this.getApiKey()) this.fetchModels();
+        }
+
+        chooseModel(modelId, modelName = '') {
+            const id = String(modelId).trim();
+            if (!id) return;
+            this.selectedModel = id;
+            document.getElementById('modelSelect').textContent = modelName || id;
+            document.getElementById('manualModelInput').value = id;
+            this.closeModelDropdown();
+            this.saveSettings();
         }
 
         showSaveIndicator() {
@@ -3091,6 +3261,77 @@
             URL.revokeObjectURL(url);
         }
 
+        // Keep external chat exports separate from our internal chat schema.
+        // Liquid Apollo exports role/content arrays; SillyTavern exports mes/is_user
+        // records (often in JSONL files). Native exports keep their own retry data.
+        parseImportedChatFile(text, filename) {
+            let raw;
+            try {
+                raw = JSON.parse(text);
+            } catch (error) {
+                if (!/\.jsonl$/i.test(filename)) throw new Error('Not valid JSON.');
+                try {
+                    raw = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => JSON.parse(line));
+                } catch (lineError) {
+                    throw new Error('Invalid SillyTavern JSONL file.');
+                }
+            }
+
+            const basename = filename.replace(/\.(jsonl|json)$/i, '').trim() || 'Imported Chat';
+            if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+                if (raw.chat && typeof raw.chat === 'object' && Array.isArray(raw.chat.messages)) raw = raw.chat;
+                else if (raw.conversation && typeof raw.conversation === 'object' && Array.isArray(raw.conversation.messages)) raw = raw.conversation;
+                else if (raw.data && typeof raw.data === 'object' && Array.isArray(raw.data.messages)) raw = raw.data;
+            }
+            if (Array.isArray(raw)) {
+                if (raw.length === 0) throw new Error('The chat file has no messages.');
+                const isSillyTavern = raw.some(entry => entry && typeof entry === 'object' &&
+                    (typeof entry.is_user === 'boolean' || (typeof entry.mes === 'string' && !('role' in entry))));
+                if (isSillyTavern) {
+                    const messages = [];
+                    const retryChains = [];
+                    for (const item of raw) {
+                        if (!item || typeof item !== 'object' || typeof item.mes !== 'string') continue;
+                        if (item.is_system === true) continue;
+                        const role = item.is_user === true ? 'user' : 'assistant';
+                        const message = { role, content: item.mes };
+                        if (role === 'assistant' && Array.isArray(item.swipes) && item.swipes.some(v => typeof v === 'string')) {
+                            const versions = item.swipes.filter(v => typeof v === 'string');
+                            if (!versions.includes(item.mes)) versions.push(item.mes);
+                            let currentVersion = Number.isInteger(item.swipe_id) ? item.swipe_id : versions.indexOf(item.mes);
+                            if (currentVersion < 0 || currentVersion >= versions.length) currentVersion = versions.indexOf(item.mes);
+                            // Preserve the displayed message as the selected retry version.
+                            if (versions[currentVersion] !== item.mes) currentVersion = versions.indexOf(item.mes);
+                            message.chainId = retryChains.length;
+                            retryChains.push({ versions, currentVersion, partialFlags: versions.map(() => false) });
+                        }
+                        messages.push(message);
+                    }
+                    if (messages.length === 0) throw new Error('No supported SillyTavern messages were found.');
+                    const header = raw.find(entry => entry && typeof entry.character_name === 'string');
+                    return { name: header && header.character_name ? header.character_name : basename, messages, retryChains };
+                }
+                raw = { name: basename, messages: raw };
+            }
+            if (!raw || typeof raw !== 'object' || !Array.isArray(raw.messages)) {
+                throw new Error('Unrecognized chat format: expected a messages array.');
+            }
+            // Also accept SillyTavern message records inside a JSON object wrapper.
+            if (raw.messages.some(m => m && typeof m === 'object' &&
+                (typeof m.is_user === 'boolean' || (typeof m.mes === 'string' && !('role' in m))))) {
+                const converted = this.parseImportedChatFile(JSON.stringify(raw.messages), filename);
+                return { ...raw, ...converted, name: raw.name || converted.name };
+            }
+            // Native SeriousInn exports can have an empty conversation; keep them valid.
+            if (raw.messages.length && !raw.messages.some(m => m && typeof m === 'object' &&
+                (typeof m.content === 'string' || typeof m.mes === 'string'))) {
+                throw new Error('No readable messages found in this file.');
+            }
+            // Some Liquid Apollo wrappers carry messages with the same role/content fields.
+            if (!raw.name) raw = { ...raw, name: basename };
+            return raw;
+        }
+
         normalizeImportedChat(raw) {
             const chat = {
                 id: typeof raw.id === 'string' && raw.id ? raw.id : this.generateId(),
@@ -3106,6 +3347,10 @@
                 if (!rawChain || typeof rawChain !== 'object') return;
                 const versions = Array.isArray(rawChain.versions)
                     ? rawChain.versions.map(v => typeof v === 'string' ? v : '') : [];
+                const reasoningVersions = Array.isArray(rawChain.reasoningVersions)
+                    ? rawChain.reasoningVersions.map(v => typeof v === 'string' ? v : '') : [];
+                while (reasoningVersions.length < versions.length) reasoningVersions.push('');
+                reasoningVersions.length = versions.length;
                 let partialFlags;
                 if (Array.isArray(rawChain.partialFlags)) {
                     partialFlags = rawChain.partialFlags.map(f => !!f);
@@ -3119,7 +3364,7 @@
                 if (versions.length === 0) currentVersion = 0;
                 else if (currentVersion < 0) currentVersion = 0;
                 else if (currentVersion >= versions.length) currentVersion = versions.length - 1;
-                chat.retryChains.push({ index: i, versions, currentVersion, partialFlags });
+                chat.retryChains.push({ index: i, versions, currentVersion, partialFlags, reasoningVersions });
             });
             
             const rawMessages = Array.isArray(raw.messages) ? raw.messages : [];
@@ -3128,12 +3373,14 @@
                     role: rawMsg && rawMsg.role === 'user' ? 'user' : (rawMsg && rawMsg.role === 'assistant' ? 'assistant' : 'user'),
                     content: rawMsg && typeof rawMsg.content === 'string' ? rawMsg.content : ''
                 };
+                if (rawMsg && typeof rawMsg.reasoning === 'string') msg.reasoning = rawMsg.reasoning;
                 const rawChainId = rawMsg && rawMsg.chainId;
                 const chain = (typeof rawChainId === 'number' && chat.retryChains[rawChainId]) ? chat.retryChains[rawChainId] : null;
                 if (chain) {
                     if (chain.versions.length === 0) {
                         chain.versions.push(msg.content);
                         chain.partialFlags.push(false);
+                        chain.reasoningVersions.push(msg.reasoning || '');
                         chain.currentVersion = 0;
                     } else if (chain.versions[chain.currentVersion] !== msg.content) {
                         const foundIdx = chain.versions.indexOf(msg.content);
@@ -3142,6 +3389,9 @@
                     }
                     msg.chainId = rawChainId;
                     if (chain.partialFlags[chain.currentVersion]) msg.partial = true;
+                    if (!msg.reasoning && chain.reasoningVersions[chain.currentVersion]) {
+                        msg.reasoning = chain.reasoningVersions[chain.currentVersion];
+                    }
                 } else if (rawMsg && rawMsg.partial) {
                     msg.partial = true;
                 }
@@ -3173,23 +3423,19 @@
         importCurrentChat() {
             const input = document.createElement('input');
             input.type = 'file';
-            input.accept = '.json';
+            input.accept = '.json,.jsonl';
             input.addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     try {
-                        const raw = JSON.parse(event.target.result);
-                        let chatData = raw;
-                        if (Array.isArray(raw)) {
-                            chatData = { name: file.name.replace('.json', ''), messages: raw };
-                        }
-                        if (!chatData || !chatData.messages || !Array.isArray(chatData.messages)) {
-                            alert('Invalid chat file: missing messages array');
-                            return;
-                        }
+                        const chatData = this.parseImportedChatFile(String(event.target.result), file.name);
                         const chat = this.normalizeImportedChat(chatData);
+                        // Always import as a new chat, even if this file originated here.
+                        // This avoids ID collisions and never replaces an existing chat.
+                        chat.id = this.generateId();
+                        while (this.chats.some(existing => existing.id === chat.id)) chat.id = this.generateId();
                         chat.messages = chat.messages.filter(m =>
                             !(m.role === 'assistant' && (!m.content || m.content.trim() === ''))
                         );
@@ -3202,9 +3448,10 @@
                         this.closeSidebar();
                         alert(`Chat "${chat.name}" imported successfully!`);
                     } catch (err) {
-                        alert('Failed to import chat: invalid file format');
+                        alert(`Failed to import chat: ${err.message || 'invalid file format'}`);
                     }
                 };
+                reader.onerror = () => alert('Failed to read the selected chat file.');
                 reader.readAsText(file);
             });
             input.click();
@@ -3596,7 +3843,7 @@
             if (apiKey && this.selectedModel) {
                 this.isResponding = true;
                 this.updateSendButton();
-                await this.sendToOpenRouter(chat, apiKey, this.selectedModel, content);
+                await this.sendToProvider(chat, this.selectedModel, content);
             } else {
                 chat.messages.push({
                     role: 'assistant',
@@ -3644,6 +3891,14 @@
             contentEl.innerHTML = displayContent;
             contentEl.style.whiteSpace = 'pre-wrap';
             contentEl.style.wordBreak = 'break-word';
+            if (this.llmSettings.showReasoning && message._reasoningPreview) {
+                let reasoningEl = streamingEl.querySelector('.message-reasoning');
+                if (!reasoningEl) {
+                    reasoningEl = this.makeReasoningElement('');
+                    contentEl.insertAdjacentElement('beforebegin', reasoningEl);
+                }
+                reasoningEl.querySelector('pre').textContent = message._reasoningPreview;
+            }
             if (message.streaming) {
                 const cursor = document.createElement('span');
                 cursor.className = 'streaming-cursor';
@@ -3652,7 +3907,7 @@
             if (wasNearBottom) messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
-        _commitStreamResult(chat, targetMessage, retryContext, accumulated, aborted) {
+        _commitStreamResult(chat, targetMessage, retryContext, accumulated, aborted, reasoning = '') {
             if (retryContext) {
                 const { oldContent, existingChainIndex } = retryContext;
                 if (!chat.retryChains) chat.retryChains = [];
@@ -3660,53 +3915,45 @@
                 let chain;
                 if (chainIndex === null || !chat.retryChains[chainIndex]) {
                     chainIndex = chat.retryChains.length;
-                    chain = { versions: [oldContent], currentVersion: 0, index: chainIndex, partialFlags: [false] };
+                    chain = { versions: [oldContent], reasoningVersions: [retryContext.oldReasoning || ''], currentVersion: 0, index: chainIndex, partialFlags: [false] };
                     chat.retryChains.push(chain);
                 } else {
                     chain = chat.retryChains[chainIndex];
                     if (!chain.partialFlags) chain.partialFlags = new Array(chain.versions.length).fill(false);
                 }
+                if (!chain.reasoningVersions) chain.reasoningVersions = new Array(chain.versions.length).fill('');
                 chain.versions.push(accumulated);
+                chain.reasoningVersions.push(reasoning);
                 chain.partialFlags.push(!!aborted);
                 chain.currentVersion = chain.versions.length - 1;
                 targetMessage.content = accumulated;
+                targetMessage.reasoning = reasoning;
                 targetMessage.chainId = chainIndex;
+                delete targetMessage._reasoningPreview;
                 delete targetMessage._streamPreview;
                 delete targetMessage.streaming;
                 if (aborted) targetMessage.partial = true;
                 else delete targetMessage.partial;
             } else {
                 targetMessage.content = accumulated;
+                targetMessage.reasoning = reasoning;
+                delete targetMessage._reasoningPreview;
                 delete targetMessage._streamPreview;
                 delete targetMessage.streaming;
                 if (aborted) targetMessage.partial = true;
             }
         }
 
-        async sendToOpenRouter(chat, apiKey, model, userMessage, retryContext = null) {
+        async sendToProvider(chat, model, userMessage, retryContext = null) {
             this.abortController = new AbortController();
             const lorebookContext = this.buildLorebookContext(userMessage);
             const systemPrompt = `You are a helpful AI assistant engaged in roleplay.${lorebookContext}`;
             const historyMessages = retryContext ? chat.messages.slice(0, retryContext.messageIndex) : chat.messages;
-            const requestBody = {
-                model: model,
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    ...historyMessages.map(m => ({ role: m.role, content: m.content }))
-                ],
-                temperature: this.llmSettings.temperature,
-                top_p: this.llmSettings.top_p,
-                top_k: this.llmSettings.top_k,
-                frequency_penalty: this.llmSettings.frequency_penalty,
-                presence_penalty: this.llmSettings.presence_penalty,
-                repetition_penalty: this.llmSettings.repetition_penalty,
-                min_p: this.llmSettings.min_p,
-                top_a: this.llmSettings.top_a,
-                max_tokens: this.llmSettings.max_tokens,
-                stream: true,
-                stream_options: { include_usage: true }
-            };
-            
+            const requestBody = this.buildCompletionRequest(model, [
+                { role: 'system', content: systemPrompt },
+                ...historyMessages.map(m => ({ role: m.role, content: m.content }))
+            ]);
+
             let targetMessage;
             if (retryContext) {
                 targetMessage = chat.messages[retryContext.messageIndex];
@@ -3718,23 +3965,20 @@
                 }
                 targetMessage.streaming = true;
                 targetMessage._streamPreview = '';
+                targetMessage._reasoningPreview = '';
             } else {
-                targetMessage = { role: 'assistant', content: '', streaming: true, _streamPreview: '' };
+                targetMessage = { role: 'assistant', content: '', streaming: true, _streamPreview: '', _reasoningPreview: '' };
                 chat.messages.push(targetMessage);
             }
             
             this.renderMessages({ forceScroll: true });
             let accumulated = '';
+            let reasoning = '';
             
             try {
-                const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                const response = await fetch(`${this.getProviderBaseUrl()}/chat/completions`, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${apiKey}`,
-                        'Content-Type': 'application/json',
-                        'HTTP-Referer': window.location.href,
-                        'X-Title': 'Roleplay Chat'
-                    },
+                    headers: this.getProviderHeaders(),
                     body: JSON.stringify(requestBody),
                     signal: this.abortController.signal
                 });
@@ -3775,25 +4019,32 @@
                         if (parsed.error) throw new Error(parsed.error.message || 'Stream error');
                         const choice = parsed.choices && parsed.choices[0];
                         if (!choice) continue;
-                        const delta = choice.delta && choice.delta.content;
-                        if (delta) {
-                            accumulated += delta;
-                            targetMessage._streamPreview = accumulated;
-                            this._scheduleStreamRender();
+                        const delta = choice.delta || {};
+                        const answerChunk = typeof delta.content === 'string' ? delta.content : '';
+                        const reasoningChunk = this.extractReasoningDelta(delta);
+                        if (reasoningChunk) {
+                            reasoning += reasoningChunk;
+                            targetMessage._reasoningPreview = reasoning;
                         }
+                        if (answerChunk) {
+                            accumulated += answerChunk;
+                            targetMessage._streamPreview = accumulated;
+                        }
+                        if (answerChunk || reasoningChunk) this._scheduleStreamRender();
                     }
                 }
                 
-                this._commitStreamResult(chat, targetMessage, retryContext, accumulated, false);
+                this._commitStreamResult(chat, targetMessage, retryContext, accumulated, false, reasoning);
                 this.saveToStorage();
                 this.renderMessages();
             } catch (error) {
                 if (error.name === 'AbortError') {
-                    if (accumulated) {
-                        this._commitStreamResult(chat, targetMessage, retryContext, accumulated, true);
+                    if (accumulated || reasoning) {
+                        this._commitStreamResult(chat, targetMessage, retryContext, accumulated || '[No final answer received]', true, reasoning);
                     } else {
                         if (retryContext) {
                             delete targetMessage._streamPreview;
+                            delete targetMessage._reasoningPreview;
                             delete targetMessage.streaming;
                         } else {
                             const idx = chat.messages.indexOf(targetMessage);
@@ -3804,14 +4055,16 @@
                     this.renderMessages();
                     return;
                 }
-                if (accumulated) {
-                    this._commitStreamResult(chat, targetMessage, retryContext, accumulated, true);
+                if (accumulated || reasoning) {
+                    this._commitStreamResult(chat, targetMessage, retryContext, accumulated || `[Error: ${error.message}]`, true, reasoning);
                 } else if (retryContext) {
                     delete targetMessage._streamPreview;
+                    delete targetMessage._reasoningPreview;
                     delete targetMessage.streaming;
                 } else {
                     targetMessage.content = `[Error: ${error.message}]`;
                     delete targetMessage._streamPreview;
+                    delete targetMessage._reasoningPreview;
                     delete targetMessage.streaming;
                 }
                 this.saveToStorage();
@@ -3823,38 +4076,44 @@
             }
         }
 
-        async fetchModels(apiKey) {
+        async fetchModels() {
+            const provider = this.provider;
+            const apiKey = this.getApiKey();
+            if (!apiKey) return false;
+            const fetchSequence = ++this._modelsFetchSequence;
             try {
-                const response = await fetch('https://openrouter.ai/api/v1/models', {
-                    headers: { 'Authorization': `Bearer ${apiKey}` }
+                const response = await fetch(`${this.getProviderBaseUrl(provider)}/models`, {
+                    headers: this.getProviderHeaders(provider)
                 });
-                if (response.ok) {
-                    const data = await response.json();
-                    this.availableModels = data.data;
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const payload = await response.json();
+                const models = Array.isArray(payload.data) ? payload.data :
+                    Array.isArray(payload.models) ? payload.models : [];
+                if (fetchSequence !== this._modelsFetchSequence || provider !== this.provider) return false;
+                this.availableModels = models.map(model => typeof model === 'string' ? { id: model, name: model } : model)
+                    .filter(model => model && typeof model.id === 'string');
+                this.renderModelOptions();
+                return true;
+            } catch (error) {
+                if (fetchSequence === this._modelsFetchSequence && provider === this.provider) {
+                    this.availableModels = [];
                     this.renderModelOptions();
                 }
-            } catch (error) {}
+                throw error;
+            }
         }
 
         async testConnection() {
-            const apiKey = this.getApiKey();
-            if (!apiKey) { alert('Please enter an OpenRouter API key first.'); return; }
             this.saveSettings();
+            if (!this.getApiKey()) { alert(`Please enter a ${this.provider === 'openrouter' ? 'OpenRouter' : 'NanoGPT'} API key first.`); return; }
             const testBtn = document.getElementById('testConnectionBtn');
-            testBtn.textContent = '⏳ Testing...';
+            testBtn.textContent = 'Testing...';
             testBtn.disabled = true;
             try {
-                const response = await fetch('https://openrouter.ai/api/v1/models', {
-                    headers: { 'Authorization': `Bearer ${apiKey}` }
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    this.availableModels = data.data;
-                    this.renderModelOptions();
-                    alert(`Connection successful! ${data.data.length} models available.`);
-                } else throw new Error(`HTTP ${response.status}`);
+                const success = await this.fetchModels();
+                if (success) alert(`Model list loaded (${this.availableModels.length} models).`);
             } catch (error) {
-                alert(`Connection failed: ${error.message}`);
+                alert(`Could not load the provider's model list: ${error.message}. You can still enter a model ID manually and try a chat.`);
             } finally {
                 testBtn.textContent = '🔌 Test Connection';
                 testBtn.disabled = false;
@@ -3880,10 +4139,7 @@
                 if (model.id === this.selectedModel) option.classList.add('selected');
                 option.textContent = model.name || model.id;
                 option.addEventListener('click', () => {
-                    this.selectedModel = model.id;
-                    document.getElementById('modelSelect').textContent = model.name || model.id;
-                    this.closeModelDropdown();
-                    this.saveSettings();
+                    this.chooseModel(model.id, model.name || model.id);
                 });
                 modelOptions.appendChild(option);
             });
@@ -3941,6 +4197,7 @@
                 roleLabel.textContent = message.role === 'user' ? 'You' : 'Assistant';
                 
                 let displayContent = message.content;
+                let displayReasoning = message.reasoning || '';
                 let displayVersion = -1;
                 let displayTotal = 1;
                 let isPartialVersion = false;
@@ -3951,10 +4208,12 @@
                         displayVersion = chain.currentVersion;
                         displayTotal = chain.versions.length;
                         displayContent = chain.versions[displayVersion];
+                        if (chain.reasoningVersions) displayReasoning = chain.reasoningVersions[displayVersion] || '';
                         if (chain.partialFlags && chain.partialFlags[displayVersion]) isPartialVersion = true;
                     }
                 }
                 if (message.streaming && message._streamPreview !== undefined) displayContent = message._streamPreview;
+                if (message.streaming) displayReasoning = message._reasoningPreview || '';
                 if (!message.streaming && (isPartialVersion || message.partial)) {
                     const badge = document.createElement('span');
                     badge.className = 'partial-badge';
@@ -3974,6 +4233,9 @@
                 }
                 
                 messageElement.appendChild(roleLabel);
+                if (message.role === 'assistant' && this.llmSettings.showReasoning && displayReasoning) {
+                    messageElement.appendChild(this.makeReasoningElement(displayReasoning));
+                }
                 messageElement.appendChild(contentElement);
                 
                 const actions = document.createElement('div');
@@ -4052,11 +4314,12 @@
             const retryContext = {
                 messageIndex: index,
                 oldContent: message.content,
+                oldReasoning: message.reasoning || '',
                 existingChainIndex: (message.chainId !== undefined && message.chainId !== null) ? message.chainId : null
             };
             this.isResponding = true;
             this.updateSendButton();
-            await this.sendToOpenRouter(chat, apiKey, this.selectedModel, userMessage, retryContext);
+            await this.sendToProvider(chat, this.selectedModel, userMessage, retryContext);
         }
 
         prevVersion(chainId) {
@@ -4068,6 +4331,7 @@
             const message = chat.messages.find(m => m.chainId === chainId && m.role === 'assistant');
             if (message) {
                 message.content = chain.versions[chain.currentVersion];
+                message.reasoning = chain.reasoningVersions ? chain.reasoningVersions[chain.currentVersion] || '' : '';
                 if (chain.partialFlags && chain.partialFlags[chain.currentVersion]) message.partial = true;
                 else delete message.partial;
             }
@@ -4083,6 +4347,7 @@
             const message = chat.messages.find(m => m.chainId === chainId && m.role === 'assistant');
             if (message) {
                 message.content = chain.versions[chain.currentVersion];
+                message.reasoning = chain.reasoningVersions ? chain.reasoningVersions[chain.currentVersion] || '' : '';
                 if (chain.partialFlags && chain.partialFlags[chain.currentVersion]) message.partial = true;
                 else delete message.partial;
             }
@@ -4183,7 +4448,7 @@
             if (apiKey && this.selectedModel) {
                 this.isResponding = true;
                 this.updateSendButton();
-                await this.sendToOpenRouter(chat, apiKey, this.selectedModel, userMessage);
+                await this.sendToProvider(chat, this.selectedModel, userMessage);
             }
         }
 
@@ -4769,14 +5034,9 @@ ${transcript}
             state.abortController = new AbortController();
             
             try {
-                const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                const response = await fetch(`${this.getProviderBaseUrl()}/chat/completions`, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${apiKey}`,
-                        'Content-Type': 'application/json',
-                        'HTTP-Referer': window.location.href,
-                        'X-Title': 'Roleplay Chat'
-                    },
+                    headers: this.getProviderHeaders(),
                     body: JSON.stringify({
                         model: this.selectedModel,
                         messages: [
@@ -5130,10 +5390,27 @@ ${transcript}
                 }
             });
             
+            document.getElementById('providerSelect').addEventListener('change', e => this.switchProvider(e.target.value));
+            document.getElementById('nanogptEndpointInput').addEventListener('change', e => {
+                const url = e.target.value.trim().replace(/\/+$/, '');
+                StorageManager.setItem('nanogpt_base_url', url || 'https://nano-gpt.com/api/v1');
+                this._modelsFetchSequence++;
+                this.availableModels = [];
+                this.renderModelOptions();
+            });
             document.getElementById('apiKeyInput').addEventListener('input', () => {
                 this.saveSettings();
-                const apiKey = this.getApiKey();
-                if (apiKey) this.fetchModels(apiKey);
+                this._modelsFetchSequence++;
+                clearTimeout(this._modelFetchTimer);
+                if (this.getApiKey()) {
+                    this._modelFetchTimer = setTimeout(() => this.fetchModels().catch(() => {}), 650);
+                }
+            });
+            document.getElementById('useManualModelBtn').addEventListener('click', () => {
+                this.chooseModel(document.getElementById('manualModelInput').value);
+            });
+            document.getElementById('manualModelInput').addEventListener('keydown', e => {
+                if (e.key === 'Enter') { e.preventDefault(); this.chooseModel(e.target.value); }
             });
             
             document.getElementById('modelSelectWrapper').addEventListener('click', () => {
