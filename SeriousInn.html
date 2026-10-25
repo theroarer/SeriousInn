@@ -90,6 +90,19 @@
             white-space: nowrap;
         }
 
+        #chatStorageStatus {
+			font-size: 11px;
+			color: var(--success);
+			max-width: 45%;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			flex-shrink: 0;
+		}
+
+		#chatStorageStatus[data-state="saving"] { color: var(--text-secondary); }
+		#chatStorageStatus[data-state="error"] { color: var(--danger); font-weight: 700; }
+
         #sidebar {
             position: fixed;
             left: calc(-1 * var(--sidebar-width) - 20px);
@@ -1524,6 +1537,7 @@
         <div id="header">
             <button class="hamburger" id="hamburgerBtn">☰</button>
             <div id="chatTitle">New Chat</div>
+            <span id="chatStorageStatus" role="status" aria-live="polite" title="Chat save status"></span>
         </div>
 
         <div id="chatArea">
@@ -1661,7 +1675,7 @@
         
         static saveToIndexedDB(lorebook) {
             return new Promise((resolve, reject) => {
-                const request = indexedDB.open('RoleplayChatDB', 1);
+                const request = indexedDB.open('RoleplayChatDB', 2);
                 request.onerror = () => reject(request.error);
                 request.onupgradeneeded = (event) => {
                     const db = event.target.result;
@@ -1682,7 +1696,7 @@
         
         static getFromIndexedDB() {
             return new Promise((resolve, reject) => {
-                const request = indexedDB.open('RoleplayChatDB', 1);
+                const request = indexedDB.open('RoleplayChatDB', 2);
                 request.onerror = () => reject(request.error);
                 request.onupgradeneeded = (event) => {
                     const db = event.target.result;
@@ -1703,7 +1717,7 @@
         
         static deleteFromIndexedDB(id) {
             return new Promise((resolve, reject) => {
-                const request = indexedDB.open('RoleplayChatDB', 1);
+                const request = indexedDB.open('RoleplayChatDB', 2);
                 request.onerror = () => reject(request.error);
                 request.onsuccess = (event) => {
                     const db = event.target.result;
@@ -1744,6 +1758,107 @@
         }
     }
 
+    class ChatStorage {
+		static db = null;
+
+		static async init() {
+			if (!('indexedDB' in window)) throw new Error('IndexedDB is not available in this browser.');
+			const db = await new Promise((resolve, reject) => {
+				const request = indexedDB.open('RoleplayChatDB', 2);
+				request.onupgradeneeded = () => {
+					const upgradeDb = request.result;
+					if (!upgradeDb.objectStoreNames.contains('lorebooks')) upgradeDb.createObjectStore('lorebooks', { keyPath: 'id' });
+					if (!upgradeDb.objectStoreNames.contains('chats')) upgradeDb.createObjectStore('chats', { keyPath: 'id' });
+					if (!upgradeDb.objectStoreNames.contains('chat_meta')) upgradeDb.createObjectStore('chat_meta', { keyPath: 'key' });
+				};
+				request.onblocked = () => reject(new Error('Chat database upgrade is blocked by another open tab. Close other tabs and reload.'));
+				request.onerror = () => reject(request.error || new Error('Cannot open chat database.'));
+				request.onsuccess = () => resolve(request.result);
+			});
+			db.onversionchange = () => {
+				db.close();
+				if (this.db === db) this.db = null;
+			};
+			this.db = db;
+		}
+
+		static runTransaction(storeNames, mode, work) {
+			return new Promise((resolve, reject) => {
+				if (!this.db) return reject(new Error('Chat database is not open. Reload the page.'));
+				let transaction;
+				try {
+					transaction = this.db.transaction(storeNames, mode);
+					work(transaction);
+				} catch (error) {
+					if (transaction) transaction.abort();
+					return reject(error);
+				}
+				transaction.oncomplete = () => resolve();
+				transaction.onerror = () => reject(transaction.error || new Error('Chat database transaction failed.'));
+				transaction.onabort = () => reject(transaction.error || new Error('Chat database transaction was aborted.'));
+			});
+		}
+
+		static readStore(storeName, method, ...args) {
+			return new Promise((resolve, reject) => {
+				if (!this.db) return reject(new Error('Chat database is not open.'));
+				let request;
+				try {
+					request = this.db.transaction([storeName], 'readonly').objectStore(storeName)[method](...args);
+				} catch (error) {
+					return reject(error);
+				}
+				request.onsuccess = () => resolve(request.result);
+				request.onerror = () => reject(request.error || new Error('Could not read chat data.'));
+			});
+		}
+
+		static async loadAndMigrate() {
+			await this.init();
+			const existing = await this.readStore('chats', 'getAll');
+			const marker = await this.readStore('chat_meta', 'get', 'legacy_migration_done');
+			if (marker) {
+				// Never reimport stale legacy records: they might have been deleted in IndexedDB.
+				const oldData = StorageManager.getItem('roleplay_chats');
+				if (Array.isArray(oldData) && oldData.length) {
+					const ids = new Set(existing.map(chat => chat.id));
+					if (oldData.every(chat => chat && ids.has(chat.id))) StorageManager.removeItem('roleplay_chats');
+				}
+				return { chats: existing, migrated: false };
+			}
+
+			// Only merge chats that are not already in IndexedDB, so newer edits always win.
+			const legacy = StorageManager.getItem('roleplay_chats');
+			if (legacy !== null && !Array.isArray(legacy)) throw new Error('Legacy chat data is invalid; it has not been deleted.');
+			const existingIds = new Set(existing.map(chat => chat.id));
+			if ((legacy || []).some(chat => !chat || typeof chat.id !== 'string')) {
+				throw new Error('Legacy chat IDs are invalid. Original data has not been deleted.');
+			}
+			const missing = (legacy || []).filter(chat => !existingIds.has(chat.id));
+			await this.runTransaction(['chats', 'chat_meta'], 'readwrite', transaction => {
+				const chats = transaction.objectStore('chats');
+				for (const chat of missing) chats.put(chat);
+				transaction.objectStore('chat_meta').put({ key: 'legacy_migration_done', completed: Date.now() });
+			});
+			const verified = await this.readStore('chats', 'getAll');
+			const verifiedIds = new Set(verified.map(chat => chat.id));
+			if ((legacy || []).some(chat => !chat || !verifiedIds.has(chat.id))) {
+				throw new Error('Chat migration could not be verified. Original localStorage has been preserved.');
+			}
+			if (Array.isArray(legacy) && legacy.length) StorageManager.removeItem('roleplay_chats');
+			return { chats: verified, migrated: missing.length > 0 };
+		}
+
+		static async saveChanges(changedChats, deletedIds) {
+			if (!changedChats.length && !deletedIds.length) return;
+			await this.runTransaction(['chats'], 'readwrite', transaction => {
+				const store = transaction.objectStore('chats');
+				for (const chat of changedChats) store.put(chat);
+				for (const id of deletedIds) store.delete(id);
+			});
+		}
+	}
+
     class ChatApp {
         constructor() {
             this.chats = [];
@@ -1762,6 +1877,11 @@
             this._dropdownRepositionTimer = null;
             this._scrollSaveTimer = null;
             this._summarizeState = null;
+			this._chatStorageReady = false;
+			this._persistedChatSignatures = new Map();
+			this._chatSaveRevision = 0;
+			this._chatSaveScheduled = false;
+			this._chatSaveRunning = false;
             this.llmSettings = {
                 temperature: 0.7, top_p: 0.9, top_k: 0,
                 frequency_penalty: 0.0, presence_penalty: 0.0,
@@ -1775,9 +1895,9 @@
 
         async init() {
             await LorebookStorage.init();
+            // Open the upgraded database before lorebooks can open it at version 2.
+            await this.loadFromStorage();
             await this.loadLorebooks();
-            
-            this.loadFromStorage();
             this.loadLLMSettings();
             this.loadExportSettings();
             this.loadUISettings();
@@ -3053,29 +3173,95 @@
             }
         }
 
-        loadFromStorage() {
-            try {
-                const stored = StorageManager.getItem('roleplay_chats');
-                if (stored) {
-                    this.chats = stored;
-                    this.chats.forEach(chat => {
-                        if (chat && Array.isArray(chat.messages)) {
-                            chat.messages.forEach(m => {
-                                if (!m) return;
-                                if (m.regenerating) delete m.regenerating;
-                                if (m.streaming) delete m.streaming;
-                                if (m._streamPreview !== undefined) delete m._streamPreview;
-                                if (m._reasoningPreview !== undefined) delete m._reasoningPreview;
-                            });
-                        }
-                    });
-                }
-            } catch (e) {}
+        async loadFromStorage() {
+			try {
+				const result = await ChatStorage.loadAndMigrate();
+				this.chats = result.chats;
+				this._chatStorageReady = true;
+				for (const chat of this.chats) {
+					if (!chat || !Array.isArray(chat.messages)) continue;
+					for (const message of chat.messages) {
+						if (!message) continue;
+						delete message.regenerating;
+						delete message.streaming;
+						delete message._streamPreview;
+						delete message._reasoningPreview;
+					}
+				}
+				this._persistedChatSignatures = new Map(this.chats.map(chat => [chat.id, JSON.stringify(chat)]));
+				if (result.migrated) this.setChatSaveStatus('Chats migrated to IndexedDB', 'saved');
+			} catch (error) {
+				console.error('Chat storage could not be initialized:', error);
+				// Show any surviving legacy chats, but do not overwrite either storage source.
+				const legacy = StorageManager.getItem('roleplay_chats');
+				this.chats = Array.isArray(legacy) ? legacy : [];
+				this._chatStorageReady = false;
+				this.setChatSaveStatus(`CHATS NOT SAVING: ${error.message || error}`, 'error');
+			}
         }
 
+		setChatSaveStatus(message, state = 'saved') {
+			const indicator = document.getElementById('chatStorageStatus');
+			if (!indicator) return;
+			indicator.textContent = message;
+			indicator.title = message;
+			indicator.dataset.state = state;
+			if (state === 'saved') {
+				clearTimeout(this._chatStatusTimeout);
+				this._chatStatusTimeout = setTimeout(() => {
+					if (indicator.dataset.state === 'saved') indicator.textContent = '';
+				}, 3000);
+			} else {
+				clearTimeout(this._chatStatusTimeout);
+			}
+		}
+
         saveToStorage() {
-            try { StorageManager.setItem('roleplay_chats', this.chats); } catch (e) {}
+			if (!this._chatStorageReady) {
+				this.setChatSaveStatus('CHATS NOT SAVING: IndexedDB is unavailable', 'error');
+				return;
+			}
+			this._chatSaveRevision++;
+			this.setChatSaveStatus('Saving chats…', 'saving');
+			if (this._chatSaveRunning || this._chatSaveScheduled) return;
+			this._chatSaveScheduled = true;
+			// Schedule in a microtask, before the next user/browser event.
+			void Promise.resolve().then(() => this.flushChatSaves());
         }
+
+		async flushChatSaves() {
+			this._chatSaveScheduled = false;
+			if (!this._chatStorageReady) return false;
+			if (this._chatSaveRunning) return this._chatSavePromise;
+			this._chatSaveRunning = true;
+			this._chatSavePromise = (async () => {
+				try {
+					let revision;
+					do {
+						revision = this._chatSaveRevision;
+						const signatures = new Map();
+						const changed = [];
+						for (const chat of this.chats) {
+							const serialized = JSON.stringify(chat);
+							signatures.set(chat.id, serialized);
+							if (serialized !== this._persistedChatSignatures.get(chat.id)) changed.push(JSON.parse(serialized));
+						}
+						const deleted = [...this._persistedChatSignatures.keys()].filter(id => !signatures.has(id));
+						await ChatStorage.saveChanges(changed, deleted);
+						this._persistedChatSignatures = signatures;
+					} while (revision !== this._chatSaveRevision);
+					this.setChatSaveStatus('Chats saved', 'saved');
+					return true;
+				} catch (error) {
+					console.error('Chat save failed:', error);
+					this.setChatSaveStatus(`SAVE FAILED: ${error.message || error}`, 'error');
+					return false;
+				} finally {
+					this._chatSaveRunning = false;
+				}
+		})();
+			return this._chatSavePromise;
+		}
 
         loadSettings() {
             document.getElementById('providerSelect').value = this.provider;
@@ -3428,7 +3614,7 @@
                 const file = e.target.files[0];
                 if (!file) return;
                 const reader = new FileReader();
-                reader.onload = (event) => {
+                reader.onload = async (event) => {
                     try {
                         const chatData = this.parseImportedChatFile(String(event.target.result), file.name);
                         const chat = this.normalizeImportedChat(chatData);
@@ -3443,10 +3629,11 @@
                         this.currentChatId = chat.id;
                         this.saveLastChatId(chat.id);
                         this.saveToStorage();
+                        const saved = await this.flushChatSaves();
                         this.renderChatList();
                         this.switchToChat(chat.id);
                         this.closeSidebar();
-                        alert(`Chat "${chat.name}" imported successfully!`);
+                        alert(saved ? `Chat "${chat.name}" imported successfully!` : `Chat "${chat.name}" loaded, but NOT SAVED. Export a backup before reloading.`);
                     } catch (err) {
                         alert(`Failed to import chat: ${err.message || 'invalid file format'}`);
                     }
@@ -3813,12 +4000,13 @@
                 }
 
                 this.saveToStorage();
+                const saved = await this.flushChatSaves();
                 this.renderChatList();
                 if (this.currentView === 'lore') this.renderLoreManagement();
 
-                StorageManager.setItem('cloud_last_import', Date.now());
+                if (saved) StorageManager.setItem('cloud_last_import', Date.now());
                 overlay.classList.remove('active');
-                alert(`Imported ${chatCount} chat${chatCount === 1 ? '' : 's'} and ${lorebookCount} lorebook${lorebookCount === 1 ? '' : 's'}.`);
+                alert(saved ? `Imported ${chatCount} chat${chatCount === 1 ? '' : 's'} and ${lorebookCount} lorebook${lorebookCount === 1 ? '' : 's'}.` : 'Imported chats are NOT SAVED. Export backups before reloading.');
             });
             footer.appendChild(importBtn);
 
