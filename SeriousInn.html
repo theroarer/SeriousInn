@@ -4046,7 +4046,7 @@
             this.autoResizeInput();
             this.saveToStorage();
             this.renderMessages({ forceScroll: true });
-            const apiKey = this.getApiKey();
+            const apiKey = this.getApiKey() || this.provider === 'strata';
             if (apiKey && this.selectedModel) {
                 this.isResponding = true;
                 this.updateSendButton();
@@ -4519,7 +4519,7 @@
             }
             if (userMessageIndex === -1) return;
             const userMessage = chat.messages[userMessageIndex].content;
-            const apiKey = this.getApiKey();
+            const apiKey = this.getApiKey() || this.provider === 'strata';
             if (!apiKey || !this.selectedModel) {
                 alert('Please configure your API key and model first.');
                 return;
@@ -4657,7 +4657,7 @@
             const message = chat.messages[index];
             if (!message || message.role !== 'user') return;
             const userMessage = message.content;
-            const apiKey = this.getApiKey();
+            const apiKey = this.getApiKey() || this.provider === 'strata';
             if (apiKey && this.selectedModel) {
                 this.isResponding = true;
                 this.updateSendButton();
@@ -5207,7 +5207,7 @@
             const chat = this.chats.find(c => c.id === state.chatId);
             if (!chat) return;
             
-            const apiKey = this.getApiKey();
+            const apiKey = this.getApiKey() || this.provider === 'strata';
             if (!apiKey || !this.selectedModel) {
                 alert('Please configure your API key and model first.');
                 return;
