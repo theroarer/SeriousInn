@@ -1579,9 +1579,15 @@
             <select class="api-key-input" id="providerSelect" aria-label="LLM provider">
                 <option value="openrouter">OpenRouter</option>
                 <option value="nanogpt">NanoGPT</option>
+                <option value="strata">Local Strata</option>
             </select>
             <label class="api-key-label" id="apiKeyLabel" for="apiKeyInput">OpenRouter API Key:</label>
             <input type="password" class="api-key-input" id="apiKeyInput" placeholder="sk-or-..." autocomplete="off">
+            <div id="strataEndpointRow" class="provider-endpoint-row" hidden>
+                <label class="api-key-label" for="strataEndpointInput">Strata API Base URL:</label>
+                <input type="url" class="api-key-input" id="strataEndpointInput" spellcheck="false" placeholder="http://127.0.0.1:8080/v1">
+                <div class="setting-helper">Local Strata server. No API key is sent. Browser CORS must permit this page's origin.</div>
+            </div>
             <div id="nanogptEndpointRow" class="provider-endpoint-row" hidden>
                 <label class="api-key-label" for="nanogptEndpointInput">NanoGPT API Base URL:</label>
                 <input type="url" class="api-key-input" id="nanogptEndpointInput" spellcheck="false" placeholder="https://nano-gpt.com/api/v1">
@@ -1871,7 +1877,7 @@
             this.currentChatId = null;
             this.availableModels = [];
             this.selectedModel = null;
-            this.provider = StorageManager.getItem('llm_provider') === 'nanogpt' ? 'nanogpt' : 'openrouter';
+            this.provider = ['openrouter', 'nanogpt', 'strata'].includes(StorageManager.getItem('llm_provider')) ? StorageManager.getItem('llm_provider') : 'openrouter';
             this._modelsFetchSequence = 0;
             this._modelFetchTimer = null;
             this.lorebooks = [];
@@ -1933,16 +1939,19 @@
 
         getProviderBaseUrl(provider = this.provider) {
             if (provider === 'openrouter') return 'https://openrouter.ai/api/v1';
+            if (provider === 'strata') {
+                const url = String(StorageManager.getItem('strata_base_url') || 'http://127.0.0.1:8080/v1').trim().replace(/\/+$/, '');
+                if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/v1$/i.test(url)) throw new Error('Strata URL must use localhost or 127.0.0.1 with /v1');
+                return url;
+            }
             const url = String(StorageManager.getItem('nanogpt_base_url') || 'https://nano-gpt.com/api/v1').trim().replace(/\/+$/, '');
             if (!/^https:\/\/[^/]+/i.test(url)) throw new Error('NanoGPT API URL must start with https://');
             return url;
         }
 
         getProviderHeaders(provider = this.provider) {
-            const headers = {
-                'Authorization': `Bearer ${this.getApiKey(provider)}`,
-                'Content-Type': 'application/json'
-            };
+            const headers = { 'Content-Type': 'application/json' };
+            if (provider !== 'strata') headers['Authorization'] = `Bearer ${this.getApiKey(provider)}`;
             if (provider === 'openrouter') {
                 headers['HTTP-Referer'] = window.location.href;
                 headers['X-Title'] = 'Roleplay Chat';
@@ -3271,10 +3280,14 @@
 
         loadSettings() {
             document.getElementById('providerSelect').value = this.provider;
-            document.getElementById('apiKeyLabel').textContent = this.provider === 'openrouter' ? 'OpenRouter API Key:' : 'NanoGPT API Key:';
-            document.getElementById('apiKeyInput').placeholder = this.provider === 'openrouter' ? 'sk-or-...' : 'NanoGPT API key';
+            const providerNames = { openrouter: 'OpenRouter', nanogpt: 'NanoGPT', strata: 'Local Strata' };
+            document.getElementById('apiKeyLabel').textContent = this.provider === 'strata' ? 'API Key (not used by local Strata):' : `${providerNames[this.provider]} API Key:`;
+            document.getElementById('apiKeyInput').placeholder = this.provider === 'openrouter' ? 'sk-or-...' : this.provider === 'nanogpt' ? 'NanoGPT API key' : 'Not required';
             document.getElementById('apiKeyInput').value = this.getApiKey();
+            document.getElementById('apiKeyInput').disabled = this.provider === 'strata';
             document.getElementById('nanogptEndpointRow').hidden = this.provider !== 'nanogpt';
+            document.getElementById('strataEndpointRow').hidden = this.provider !== 'strata';
+            document.getElementById('strataEndpointInput').value = StorageManager.getItem('strata_base_url') || 'http://127.0.0.1:8080/v1';
             document.getElementById('nanogptEndpointInput').value = StorageManager.getItem('nanogpt_base_url') || 'https://nano-gpt.com/api/v1';
             this.selectedModel = this.getModel();
             document.getElementById('modelSelect').textContent = this.selectedModel || 'Select a model...';
@@ -3291,7 +3304,7 @@
         }
 
         switchProvider(provider) {
-            if (!['openrouter', 'nanogpt'].includes(provider) || provider === this.provider) return;
+            if (!['openrouter', 'nanogpt', 'strata'].includes(provider) || provider === this.provider) return;
             this.saveSettings();
             this.provider = provider;
             StorageManager.setItem('llm_provider', provider);
@@ -3300,7 +3313,7 @@
             this.availableModels = [];
             this.loadSettings();
             this.renderModelOptions();
-            if (this.getApiKey()) this.fetchModels();
+            if (this.provider === 'strata' || this.getApiKey()) this.fetchModels().catch(error => console.warn('Model discovery failed:', error));
         }
 
         chooseModel(modelId, modelName = '') {
@@ -4273,7 +4286,7 @@
         async fetchModels() {
             const provider = this.provider;
             const apiKey = this.getApiKey();
-            if (!apiKey) return false;
+            if (provider !== 'strata' && !apiKey) return false;
             const fetchSequence = ++this._modelsFetchSequence;
             try {
                 const response = await fetch(`${this.getProviderBaseUrl(provider)}/models`, {
@@ -4299,7 +4312,7 @@
 
         async testConnection() {
             this.saveSettings();
-            if (!this.getApiKey()) { alert(`Please enter a ${this.provider === 'openrouter' ? 'OpenRouter' : 'NanoGPT'} API key first.`); return; }
+            if (this.provider !== 'strata' && !this.getApiKey()) { alert(`Please enter a ${this.provider === 'openrouter' ? 'OpenRouter' : 'NanoGPT'} API key first.`); return; }
             const testBtn = document.getElementById('testConnectionBtn');
             testBtn.textContent = 'Testing...';
             testBtn.disabled = true;
@@ -5591,6 +5604,16 @@ ${transcript}
             });
             
             document.getElementById('providerSelect').addEventListener('change', e => this.switchProvider(e.target.value));
+            document.getElementById('strataEndpointInput').addEventListener('change', e => {
+                const url = e.target.value.trim().replace(/\/+$/, '');
+                try {
+                    if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/v1$/i.test(url)) throw new Error('Use http://127.0.0.1:8080/v1 or another localhost /v1 URL.');
+                    StorageManager.setItem('strata_base_url', url);
+                    this._modelsFetchSequence++;
+                    this.availableModels = [];
+                    this.renderModelOptions();
+                } catch (error) { alert(error.message); }
+            });
             document.getElementById('nanogptEndpointInput').addEventListener('change', e => {
                 const url = e.target.value.trim().replace(/\/+$/, '');
                 StorageManager.setItem('nanogpt_base_url', url || 'https://nano-gpt.com/api/v1');
